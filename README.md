@@ -35,7 +35,7 @@ from it. Your test namespace never sees malli directly.
 
 ```clojure
 ;; deps.edn
-io.github.hive-agi/hive-schemas {:mvn/version "0.1.0"}
+io.github.hive-agi/hive-schemas {:mvn/version "0.1.1"}
 ```
 
 The `hive-schemas.test` synthesis bridge additionally needs
