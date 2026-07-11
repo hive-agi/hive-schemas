@@ -30,10 +30,18 @@
             [hive-test.mutation.combinators :as mc]
             [hive-test.golden :as golden]
             [clojure.set :as set]
-            [clojure.test.check.clojure-test]
-            [clojure.test.check.properties]
+            ;; test.check's defspec / for-all are MACROS in cross-platform .cljc
+            ;; namespaces; the aliases let the syntax-quoted emissions resolve to
+            ;; fully-qualified symbols at compile time on BOTH clj and cljs.
+            [clojure.test.check.clojure-test :as tc]
+            [clojure.test.check.properties :as prop]
             [malli.core :as m]
             [malli.generator :as mg])
+  ;; Self-require macros so cljs consumers pull deftrifecta-from-schema /
+  ;; -predicate via plain :require/:refer. The macros are pure codegen: the only
+  ;; platform-specific symbols they emit are deftest / is (chosen via (:ns &env)
+  ;; below); defspec / for-all / golden.* / mutation.* live in .cljc, so their
+  ;; fully-qualified emissions resolve identically on clj and cljs.
   #?(:cljs (:require-macros [hive-schemas.test])))
 
 ;; SPDX-License-Identifier: MIT
@@ -269,16 +277,16 @@
        (def ~gsym (input-gen ~in))
        (def ~psym (output-oracle ~out))
        (def ~csym (seeded-cases ~in ~seed ~n-cases))
-       (clojure.test.check.clojure-test/defspec ~(symbol (str name "-conformance")) ~num-tests
-         (clojure.test.check.properties/for-all [in# ~gsym]
+       (tc/defspec ~(symbol (str name "-conformance")) ~num-tests
+         (prop/for-all [in# ~gsym]
            (~psym (~subj in#))))
        ~@(when rel
-           [`(clojure.test.check.clojure-test/defspec ~(symbol (str name "-relation")) ~num-tests
-               (clojure.test.check.properties/for-all [in# ~gsym]
+           [`(tc/defspec ~(symbol (str name "-relation")) ~num-tests
+               (prop/for-all [in# ~gsym]
                  (~rel in# (~subj in#))))])
        ~@(when idempotent?
-           [`(clojure.test.check.clojure-test/defspec ~(symbol (str name "-idempotent")) ~num-tests
-               (clojure.test.check.properties/for-all [in# ~gsym]
+           [`(tc/defspec ~(symbol (str name "-idempotent")) ~num-tests
+               (prop/for-all [in# ~gsym]
                  (= (~subj (~subj in#)) (~subj in#))))])
        ~@(when contract
            [`(~deftest-sym ~(symbol (str name "-contract"))
@@ -319,8 +327,8 @@
         deftest-sym (if (:ns &env) 'cljs.test/deftest 'clojure.test/deftest)]
     `(do
        (def ~gsym (input-gen ~schema))
-       (clojure.test.check.clojure-test/defspec ~(symbol (str name "-positive")) ~num-tests
-         (clojure.test.check.properties/for-all [x# ~gsym]
+       (tc/defspec ~(symbol (str name "-positive")) ~num-tests
+         (prop/for-all [x# ~gsym]
            (true? (~subj x#))))
        (~deftest-sym ~(symbol (str name "-negative"))
          (let [goods# (vals (seeded-cases ~schema ~seed ~n-cases))]
