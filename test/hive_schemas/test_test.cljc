@@ -52,7 +52,8 @@
 
 ;; --- the headline: property + mutation + CONTRACT tests synthesized from schemas ---
 (hst/deftrifecta-from-schema calc-tests hive-schemas.test-test/calc
-  {:in ::in :out ::out :rel calc-rel :contract true :num-tests 50 :n-cases 5})
+  {:in ::in :out ::out :rel calc-rel :contract true :num-tests 50 :n-cases 5
+   :golden-path "test/hive_schemas/__golden__/calc-tests.edn"})
 
 ;; =============================================================================
 ;; resolve-map-schema reach: :maybe deref + :or/:multi intersection

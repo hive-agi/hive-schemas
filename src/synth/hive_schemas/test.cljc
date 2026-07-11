@@ -28,6 +28,7 @@
             [hive-spi.schema.gen :as sgen]
             [hive-test.mutation :as mut]
             [hive-test.mutation.combinators :as mc]
+            [hive-test.golden :as golden]
             [clojure.set :as set]
             [clojure.test.check.clojure-test]
             [clojure.test.check.properties]
@@ -241,6 +242,8 @@
      :contract    emit a malli-native mg/check facet over a [:=> [:cat :in] :out
                   :fn-of-:rel] function schema (rung B)           [optional]
      :mutation    emit the mutation facet + non-vacuity guard     (default true)
+     :golden-path relative EDN path — snapshot {case -> {:in :out}} over the
+                  seeded cases and characterize it (opt-in)       [optional]
      :num-tests   property iterations                            (default 100)
      :seed        mutation input seed                            (default 0)
      :n-cases     mutation input cases                           (default 8)
@@ -251,8 +254,10 @@
      <name>-idempotent      for all in ~ :in, subject is idempotent   [when :idempotent?]
      <name>-contract        mg/check of the [:=> in out :fn-of-rel] schema [when :contract]
      <name>-mutants-present FAILS LOUD if :out yields no mutants       [when :mutation]
-     <name>-mutations       each schema-derived mutant is caught       [when :mutation]"
-  [name subject {:keys [in out rel idempotent? contract mutation num-tests seed n-cases]
+     <name>-mutations       each schema-derived mutant is caught       [when :mutation]
+     <name>-golden          snapshot of the seeded cases' outputs      [when :golden-path]"
+  [name subject {:keys [in out rel idempotent? contract mutation golden-path
+                        num-tests seed n-cases]
                  :or {mutation true num-tests 100 seed 0 n-cases 8}}]
   (let [subj        (subject-sym subject)
         gsym        (gensym "gen")
@@ -289,7 +294,13 @@
                (fn []
                  (doseq [in# (vals ~csym)]
                    (~is-sym (~psym (~subj in#))
-                            (str "schema-driven: output violates :out for input " in#)))))]))))
+                            (str "schema-driven: output violates :out for input " in#)))))])
+       ~@(when golden-path
+           [`(golden/deftest-golden-fn ~(symbol (str name "-golden"))
+               ~golden-path
+               (fn [] (into (sorted-map)
+                            (map (fn [[label# in#]] [label# {:in in# :out (~subj in#)}]))
+                            ~csym)))]))))
 
 (defmacro deftrifecta-predicate
   "Synthesize positive + negative tests for a PREDICATE `subject` against a
