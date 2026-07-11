@@ -50,4 +50,17 @@
   :build
   {:deps {io.github.clojure/tools.build {:mvn/version "0.10.9"}
           slipset/deps-deploy {:mvn/version "0.2.2"}}
-   :ns-default build}}}
+   :ns-default build}
+
+  ;; DEV co-development. deps.edn pins the PUBLISHED Maven coords (clean pom for
+  ;; the Clojars jar), so editing a sibling normally needs a
+  ;; `clojure -T:build install` round-trip into ~/.m2. This alias overrides the
+  ;; hive-spi / hive-test coords with the sibling working copies, so their edits
+  ;; are picked up live. :override-deps replaces the coordinate everywhere in the
+  ;; tree, so it composes with any alias:
+  ;;   clojure -M:test:local     ; kaocha against ../hive-spi + ../hive-test
+  ;;   clojure -M:nrepl:local    ; REPL against the locals
+  ;; Drop :local to build/deploy/verify against the pinned Maven versions.
+  :local
+  {:override-deps {io.github.hive-agi/hive-spi  {:local/root "../hive-spi"}
+                   io.github.hive-agi/hive-test {:local/root "../hive-test"}}}}}
