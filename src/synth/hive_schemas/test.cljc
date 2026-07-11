@@ -17,7 +17,8 @@
    Runtime levers:
      input-gen         ?in  -> test.check generator
      output-oracle     ?out -> (x -> boolean)      (m/validator; SO-safe)
-     required-entries  ?s   -> [[k child] ...] | nil (descends :and, :ref, :schema)
+     required-entries  ?s   -> [[k child] ...] | nil (descends :and/:maybe/:ref/
+                                :schema; :or/:multi -> keys required in every branch)
      wrong-value-for   child -> a value the child REJECTS, or ::unfalsifiable
      schema-mutants    orig ?out -> [[label mutant-fn] ...] (sound; skips unfalsifiable)
      schema-corruptions ?s v    -> [[label corrupted-v] ...]
@@ -27,6 +28,7 @@
             [hive-spi.schema.gen :as sgen]
             [hive-test.mutation :as mut]
             [hive-test.mutation.combinators :as mc]
+            [clojure.set :as set]
             [clojure.test.check.clojure-test]
             [clojure.test.check.properties]
             [malli.core :as m]
@@ -53,29 +55,83 @@
   [?out-schema]
   (m/validator (reg/schema ?out-schema)))
 
-(defn- resolve-map-schema
-  "Deref `?schema` toward a :map, one level at a time to a fixpoint. SO-safe on
-   RECURSIVE schemas (unlike m/deref-all). Descends :and to its first
-   map-resolving child (the oracle still enforces every conjunct). Returns the
-   :map schema, or nil when it doesn't resolve to a :map."
+(defn- deref-toward
+  "Deref/descend `?schema` one level at a time to a fixpoint, toward a STRUCTURAL
+   schema (:map, :or, :multi). SO-safe on RECURSIVE schemas (unlike m/deref-all).
+     :maybe -> its single child   (nullable wrapper; the map underneath carries
+                                    the corruptible keys)
+     :and   -> first structurally-resolving child (the oracle still enforces
+                                    every conjunct, so a corruption violating one
+                                    conjunct violates the whole :and)
+     :ref / :schema / registry-key -> m/deref
+   Returns the structural schema, or nil when `?schema` doesn't resolve to one."
   [?schema]
   (loop [s (reg/schema ?schema) n 0]
     (cond
-      (= :map (m/type s)) s
-      (> n 32)            nil
-      (= :and (m/type s)) (some resolve-map-schema (m/children s))
-      :else               (let [d (m/deref s)]
-                            (when-not (= (m/form d) (m/form s))
-                              (recur d (inc n)))))))
+      (#{:map :or :multi} (m/type s)) s
+      (> n 32)              nil
+      (= :maybe (m/type s)) (recur (first (m/children s)) (inc n))
+      (= :and (m/type s))   (some deref-toward (m/children s))
+      :else                 (let [d (m/deref s)]
+                              (when-not (= (m/form d) (m/form s))
+                                (recur d (inc n)))))))
+
+(defn- map-entries
+  "[[k child-schema] ...] for the non-optional entries of a :map schema."
+  [s]
+  (vec (for [[k props child] (m/children s)
+             :when (not (:optional props))]
+         [k child])))
+
+(defn- branch-schemas
+  "The alternative branch schemas of an :or (children as-is) or :multi (the
+   schema of each [dispatch-val props schema] entry)."
+  [s]
+  (case (m/type s)
+    :or    (m/children s)
+    :multi (map #(nth % 2) (m/children s))))
+
+(defn- union-entries
+  "Sound required entries for a UNION of `branches` (an :or/:multi). A key is
+   corruptible iff it is required in EVERY branch — dropping it (or setting a
+   value every branch rejects) then provably violates all branches, hence the
+   union. Returns nil unless every branch resolves to a :map: a non-map or
+   permissive branch could ACCEPT the corrupted value, so no sound intersection
+   exists. `exclude` drops keys we must not touch (a :multi dispatch key, whose
+   corruption merely re-routes the value to another branch). The mutant child of
+   a shared key is the disjunction of its per-branch child schemas, so
+   wrong-value-for must find a value REJECTED by every branch."
+  [branches exclude]
+  (let [maps (map deref-toward branches)]
+    (when (and (seq maps) (every? #(and % (= :map (m/type %))) maps))
+      (let [entryv   (mapv map-entries maps)
+            common   (apply disj
+                            (reduce set/intersection (map #(set (map first %)) entryv))
+                            exclude)
+            child-of (fn [k] (into [:or] (for [es entryv
+                                               [ek c] es
+                                               :when (= ek k)]
+                                           (m/form c))))]
+        (vec (for [k common] [k (child-of k)]))))))
 
 (defn required-entries
-  "[[k child-schema] ...] for the non-optional entries of a (possibly
-   registry-ref, recursive, or :and-wrapped) :map schema; nil when not a :map."
+  "[[k child-schema] ...] for the SOUND corruptible output keys of `?schema` —
+   keys whose drop / wrong-type provably violates it. For a :map: its
+   non-optional entries. For an :or/:multi over maps: the keys required in every
+   branch, each child the disjunction across branches. nil when `?schema` doesn't
+   resolve to a :map or a union of maps. Descends :and, :maybe, :ref, :schema,
+   and registry refs."
   [?schema]
-  (when-let [s (resolve-map-schema ?schema)]
-    (vec (for [[k props child] (m/children s)
-               :when (not (:optional props))]
-           [k child]))))
+  (when-let [s (deref-toward ?schema)]
+    (case (m/type s)
+      :map   (map-entries s)
+      :or    (union-entries (branch-schemas s) nil)
+      :multi (let [dk (-> s m/properties :dispatch)]
+               ;; only a keyword dispatch is analyzable; a fn dispatch reads
+               ;; unknown fields, so we can't guarantee corruption soundness
+               (when (keyword? dk)
+                 (union-entries (branch-schemas s) #{dk})))
+      nil)))
 
 ;; =============================================================================
 ;; Mutants / corruptions (sound: proven-rejecting values only)

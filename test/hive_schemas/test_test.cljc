@@ -53,3 +53,54 @@
 ;; --- the headline: property + mutation + CONTRACT tests synthesized from schemas ---
 (hst/deftrifecta-from-schema calc-tests hive-schemas.test-test/calc
   {:in ::in :out ::out :rel calc-rel :contract true :num-tests 50 :n-cases 5})
+
+;; =============================================================================
+;; resolve-map-schema reach: :maybe deref + :or/:multi intersection
+;; =============================================================================
+
+(deftest required-entries-unions-test
+  ;; :maybe derefs to the inner map (card: explain -> [:maybe :map])
+  (is (= [:a :b] (mapv first (hst/required-entries [:maybe [:map [:a :int] [:b :string]]]))))
+  ;; :or over maps -> keys required in EVERY branch (intersection)
+  (is (= [:a] (mapv first (hst/required-entries
+                            [:or [:map [:a :int] [:b :int]] [:map [:a :string]]]))))
+  ;; a key required in one branch but OPTIONAL in another is NOT sound -> excluded
+  (is (empty? (hst/required-entries
+                [:or [:map [:a :int]] [:map [:a {:optional true} :int] [:c :int]]])))
+  ;; a non-map (permissive) branch -> no sound intersection -> nil
+  (is (nil? (hst/required-entries [:or [:map [:a :int]] :string])))
+  ;; :multi excludes the dispatch key, intersects the rest
+  (is (= [:a] (mapv first (hst/required-entries
+                            [:multi {:dispatch :type}
+                             [:x [:map [:type :keyword] [:a :int]]]
+                             [:y [:map [:type :keyword] [:a :string] [:b :int]]]]))))
+  ;; a fn dispatch is not analyzable -> nil
+  (is (nil? (hst/required-entries [:multi {:dispatch (fn [_] :x)} [:x [:map [:a :int]]]]))))
+
+(deftest maybe-mutants-sound-test
+  ;; card 57a9abaa: an [:maybe :map] output (nil | detail-map, e.g. malli explain)
+  ;; used to yield ZERO mutants (vacuous facet); now it yields SOUND ones.
+  (let [out  [:maybe [:map [:a :int] [:b :string]]]
+        ok?  (hst/output-oracle out)
+        orig (fn [_] {:a 1 :b "x"})
+        muts (hst/schema-mutants orig out)]
+    (is (pos? (count muts)))                              ; non-vacuous
+    (is (ok? nil))                                        ; nil IS a valid output
+    (is (ok? (orig :_)))                                  ; so is the full map
+    (is (every? (fn [[_ f]] (not (ok? (f :_)))) muts))))  ; every mutant killed
+
+;; --- an :or-output subject: both branches maps, so the mutation facet is
+;;     non-vacuous and each intersection-key mutant is provably killed ---
+(reg/register! ::tag-in  [:map [:n [:int {:min 0 :max 10000}]]])
+(reg/register! ::tag-out
+  [:or
+   [:map [:kind [:= :even]] [:n :int] [:half :int]]
+   [:map [:kind [:= :odd]]  [:n :int]]])
+
+(defn classify [{:keys [n]}]
+  (if (even? n)
+    {:kind :even :n n :half (quot n 2)}
+    {:kind :odd :n n}))
+
+(hst/deftrifecta-from-schema classify-tests hive-schemas.test-test/classify
+  {:in ::tag-in :out ::tag-out :num-tests 50 :n-cases 5})
