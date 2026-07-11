@@ -1,0 +1,44 @@
+{:paths ["src"]
+ :deps
+ {org.clojure/clojure {:mvn/version "1.12.1"}
+
+  ;; Malli schema engine — the substrate every hive-schemas lever wraps.
+  metosin/malli {:mvn/version "0.20.1"}
+
+  ;; test.check — malli.generator target; kept in CORE so the schema->generator
+  ;; lever works without the (heavier) test-synth alias.
+  org.clojure/test.check {:mvn/version "1.1.1"}
+
+  ;; hive-spi.schema.{registry,derive,gen,typed} — the single-source levers.
+  ;; Local root in the monorepo; transitively pulls hive-dsl (Result).
+  io.github.hive-agi/hive-spi {:local/root "../hive-spi"}}
+
+ :aliases
+ {;; OPTIONAL submodule: schema -> hive-test test synthesis. Pulls hive-test
+  ;; (the test-paradigm lib). Core stays test-lib-free.
+  :test-synth
+  {:extra-paths ["src/synth"]
+   :extra-deps  {io.github.hive-agi/hive-test {:local/root "../hive-test"}}}
+
+  ;; OPTIONAL submodule: differential verification facet (ladder rung E).
+  ;; hive-schemas.verified wraps ansatz.malli/check-verified! — compiled runtime
+  ;; vs Lean 4 CIC kernel whnf on generated inputs. Pulls ansatz (the kernel).
+  ;; Scope: Nat/Bool/List Nat. Core + test-synth stay ansatz-free.
+  :ansatz
+  {:extra-paths ["src/ansatz"]
+   :extra-deps  {org.replikativ/ansatz {:local/root "../clones-ref/ansatz"}}}
+
+  :test
+  {:extra-paths ["src/synth" "test"]
+   :extra-deps  {io.github.hive-agi/hive-test {:local/root "../hive-test"}
+                 lambdaisland/kaocha {:mvn/version "1.91.1392"}}
+   :main-opts   ["-m" "kaocha.runner"]}
+
+  :nrepl
+  {:extra-paths ["src/synth" "dev" "test"]
+   :extra-deps  {io.github.hive-agi/hive-test {:local/root "../hive-test"}
+                 nrepl/nrepl       {:mvn/version "1.3.1"}
+                 cider/cider-nrepl {:mvn/version "0.50.2"}}
+   :main-opts   ["-m" "nrepl.cmdline"
+                 "--middleware" "[cider.nrepl/cider-middleware]"
+                 "--port" "7956"]}}}

@@ -1,0 +1,265 @@
+(ns hive-schemas.test
+  "Schema-driven test synthesis.
+
+   A malli schema drives hive-test property + mutation tests with no
+   hand-written generator, oracle, or mutant. hive-test never sees malli.
+
+   Two synthesis macros:
+     deftrifecta-from-schema  in/out schematized fn -> conformance + (optional
+                              relational / idempotence) property + mutation
+     deftrifecta-predicate    a predicate + a schema -> positive (valid inputs
+                              accepted) + negative (corrupted inputs rejected)
+
+   Conformance alone is a WEAK oracle (it only checks the output SHAPE). For
+   real teeth: pin the :out schema (e.g. [:and ::node [:map [:k [:= v]]]]) and
+   pass a :rel (fn [in out] ...) that relates output to input.
+
+   Runtime levers:
+     input-gen         ?in  -> test.check generator
+     output-oracle     ?out -> (x -> boolean)      (m/validator; SO-safe)
+     required-entries  ?s   -> [[k child] ...] | nil (descends :and, :ref, :schema)
+     wrong-value-for   child -> a value the child REJECTS, or ::unfalsifiable
+     schema-mutants    orig ?out -> [[label mutant-fn] ...] (sound; skips unfalsifiable)
+     schema-corruptions ?s v    -> [[label corrupted-v] ...]
+     seeded-cases      ?in seed n -> {label input} (deterministic)
+     contract-violation ?in ?out rel f -> nil | violation-msg (mg/check; rung B)"
+  (:require [hive-spi.schema.registry :as reg]
+            [hive-spi.schema.gen :as sgen]
+            [hive-test.mutation :as mut]
+            [hive-test.mutation.combinators :as mc]
+            [clojure.test.check.clojure-test]
+            [clojure.test.check.properties]
+            [malli.core :as m]
+            [malli.generator :as mg])
+  #?(:cljs (:require-macros [hive-schemas.test])))
+
+;; SPDX-License-Identifier: MIT
+;; Copyright (C) 2026 Pedro Gomes Branquinho (BuddhiLW) <pedrogbranquinho@gmail.com>
+
+;; =============================================================================
+;; Schema resolution + oracle
+;; =============================================================================
+
+(defn input-gen
+  "test.check generator for `?in-schema` (registry key or malli form)."
+  [?in-schema]
+  (sgen/generator ?in-schema))
+
+(defn output-oracle
+  "Predicate x -> boolean: does x conform to `?out-schema`. Uses m/validator
+   directly (not compile-op) so RECURSIVE schemas stay SO-safe — validation
+   handles self-reference, whereas the JSON-Schema / Typed-type derivations in
+   compile-op recurse without a base case."
+  [?out-schema]
+  (m/validator (reg/schema ?out-schema)))
+
+(defn- resolve-map-schema
+  "Deref `?schema` toward a :map, one level at a time to a fixpoint. SO-safe on
+   RECURSIVE schemas (unlike m/deref-all). Descends :and to its first
+   map-resolving child (the oracle still enforces every conjunct). Returns the
+   :map schema, or nil when it doesn't resolve to a :map."
+  [?schema]
+  (loop [s (reg/schema ?schema) n 0]
+    (cond
+      (= :map (m/type s)) s
+      (> n 32)            nil
+      (= :and (m/type s)) (some resolve-map-schema (m/children s))
+      :else               (let [d (m/deref s)]
+                            (when-not (= (m/form d) (m/form s))
+                              (recur d (inc n)))))))
+
+(defn required-entries
+  "[[k child-schema] ...] for the non-optional entries of a (possibly
+   registry-ref, recursive, or :and-wrapped) :map schema; nil when not a :map."
+  [?schema]
+  (when-let [s (resolve-map-schema ?schema)]
+    (vec (for [[k props child] (m/children s)
+               :when (not (:optional props))]
+           [k child]))))
+
+;; =============================================================================
+;; Mutants / corruptions (sound: proven-rejecting values only)
+;; =============================================================================
+
+(def ^:private wrong-value-ladder
+  "Type-distinct candidate values; the first REJECTED by a key's schema becomes
+   its wrong-type mutant value."
+  [::wrong-type "hive-schemas/x" -1 true {} [] nil])
+
+(defn wrong-value-for
+  "A value the child schema `c` provably REJECTS (so an assoc of it violates the
+   key), or ::unfalsifiable when `c` accepts every ladder candidate (e.g. :any)."
+  [c]
+  (let [cv (m/validator (reg/schema c))]
+    (if-let [v (first (remove cv wrong-value-ladder))]
+      v
+      ::unfalsifiable)))
+
+(defn schema-mutants
+  "[[label mutant-fn] ...] — for each required OUTPUT key of `?out-schema`, a
+   drop-key mutant (a dropped required key always violates -> a guaranteed kill)
+   and, WHEN a rejecting value exists, a wrong-type mutant. Keys whose schema
+   accepts everything (:any) get drop-key only, never a degenerate wrong-type
+   that would silently survive. Each mutant WRAPS `orig` (the real fn value,
+   captured before any var rebind)."
+  [orig ?out-schema]
+  (vec
+    (mapcat
+      (fn [[k child]]
+        (let [wrong (wrong-value-for child)]
+          (cond-> [(mut/as-pair (mc/drop-key orig k))]
+            (not= wrong ::unfalsifiable)
+            (conj (mut/as-pair (mc/assoc-const orig k wrong))))))
+      (required-entries ?out-schema))))
+
+(defn schema-corruptions
+  "[[label corrupted-value] ...] — apply each required-key drop and (where a
+   rejecting value exists) wrong-type to `v`. Every corrupted value violates
+   `?schema`, so a correct predicate MUST reject it."
+  [?schema v]
+  (vec
+    (mapcat
+      (fn [[k child]]
+        (let [wrong (wrong-value-for child)]
+          (cond-> [[(str "drop-" k) (dissoc v k)]]
+            (not= wrong ::unfalsifiable)
+            (conj [(str "wrong-type-" k) (assoc v k wrong)]))))
+      (required-entries ?schema))))
+
+(defn seeded-cases
+  "{label input} — a reproducible, sorted sample of `n` inputs drawn from
+   `?in-schema`. Same seed yields the same cases."
+  [?in-schema seed n]
+  (into (sorted-map)
+    (map-indexed (fn [i v] [(keyword (str "case-" i)) v]))
+    (sgen/sample ?in-schema {:size n :seed seed})))
+
+;; =============================================================================
+;; Contract — malli-native behavioral spec (mg/check over a :=> function schema)
+;; =============================================================================
+
+(defn contract-schema
+  "A malli function schema [:=> [:cat ?in] ?out guard] bound to the hive-spi
+   registry (so registry-ref inputs/outputs resolve). Models a SINGLE-arg
+   subject: the guard receives [[in] ret], so a relation `rel` of (fn [in out])
+   is adapted to (fn [[[i] r]] (rel i r)). With no `rel` the schema still
+   pins the OUTPUT, so mg/check subsumes an output-conformance check."
+  [?in ?out rel]
+  (reg/schema [:=> [:cat ?in] ?out
+               (if rel [:fn (fn [[[i] r]] (rel i r))] :any)]))
+
+(defn contract-violation
+  "nil when `subject` satisfies the [:=> ?in ?out guard] contract across
+   malli-generated inputs; else a message naming the SHRUNK smallest failing
+   input and the output it produced. Wraps malli.generator/check — malli's own
+   generative function checker, so output-shape AND the relation are verified in
+   one pass (ladder rung B, in-malli behavioral)."
+  [?in ?out rel subject]
+  (when-let [f (mg/check (contract-schema ?in ?out rel) subject)]
+    (let [chk (-> f :errors first :check)
+          in  (ffirst (:smallest chk))
+          ret (get chk :malli.core/result)]
+      (str "contract violated — input " (pr-str in) " -> " (pr-str ret)))))
+
+;; =============================================================================
+;; Codegen
+;; =============================================================================
+
+(defn- subject-sym
+  "Normalize a subject to the bare qualified symbol. Accepts `ns/fn` or `#'ns/fn`."
+  [subject]
+  (if (and (seq? subject) (= 'var (first subject)))
+    (second subject)
+    subject))
+
+(defmacro deftrifecta-from-schema
+  "Synthesize tests for `subject` (a bare `ns/fn` symbol or `#'ns/fn`) from its
+   malli input/output schemas.
+
+   opts:
+     :in          input schema (registry key or malli form)      [required]
+     :out         output schema (registry key or malli form)     [required]
+     :rel         (fn [in out] boolean) relating output to input [optional but
+                  RECOMMENDED — conformance alone rarely has teeth]
+     :idempotent? emit (= (subject (subject x)) (subject x))      [optional]
+     :contract    emit a malli-native mg/check facet over a [:=> [:cat :in] :out
+                  :fn-of-:rel] function schema (rung B)           [optional]
+     :mutation    emit the mutation facet + non-vacuity guard     (default true)
+     :num-tests   property iterations                            (default 100)
+     :seed        mutation input seed                            (default 0)
+     :n-cases     mutation input cases                           (default 8)
+
+   Facets emitted (each a distinct var):
+     <name>-conformance     for all in ~ :in, output conforms to :out
+     <name>-relation        for all in ~ :in, (rel in (subject in))   [when :rel]
+     <name>-idempotent      for all in ~ :in, subject is idempotent   [when :idempotent?]
+     <name>-contract        mg/check of the [:=> in out :fn-of-rel] schema [when :contract]
+     <name>-mutants-present FAILS LOUD if :out yields no mutants       [when :mutation]
+     <name>-mutations       each schema-derived mutant is caught       [when :mutation]"
+  [name subject {:keys [in out rel idempotent? contract mutation num-tests seed n-cases]
+                 :or {mutation true num-tests 100 seed 0 n-cases 8}}]
+  (let [subj        (subject-sym subject)
+        gsym        (gensym "gen")
+        psym        (gensym "oracle")
+        csym        (gensym "cases")
+        is-sym      (if (:ns &env) 'cljs.test/is 'clojure.test/is)
+        deftest-sym (if (:ns &env) 'cljs.test/deftest 'clojure.test/deftest)]
+    `(do
+       (def ~gsym (input-gen ~in))
+       (def ~psym (output-oracle ~out))
+       (def ~csym (seeded-cases ~in ~seed ~n-cases))
+       (clojure.test.check.clojure-test/defspec ~(symbol (str name "-conformance")) ~num-tests
+         (clojure.test.check.properties/for-all [in# ~gsym]
+           (~psym (~subj in#))))
+       ~@(when rel
+           [`(clojure.test.check.clojure-test/defspec ~(symbol (str name "-relation")) ~num-tests
+               (clojure.test.check.properties/for-all [in# ~gsym]
+                 (~rel in# (~subj in#))))])
+       ~@(when idempotent?
+           [`(clojure.test.check.clojure-test/defspec ~(symbol (str name "-idempotent")) ~num-tests
+               (clojure.test.check.properties/for-all [in# ~gsym]
+                 (= (~subj (~subj in#)) (~subj in#))))])
+       ~@(when contract
+           [`(~deftest-sym ~(symbol (str name "-contract"))
+               (let [v# (contract-violation ~in ~out ~rel ~subj)]
+                 (~is-sym (nil? v#) (str v#))))])
+       ~@(when mutation
+           [`(~deftest-sym ~(symbol (str name "-mutants-present"))
+               (~is-sym (pos? (count (schema-mutants ~subj ~out)))
+                        "no schema-derived mutants — :out too permissive; tighten :out or pass :mutation false"))
+            `(mut/deftest-mutations ~(symbol (str name "-mutations"))
+               ~subj
+               (schema-mutants ~subj ~out)
+               (fn []
+                 (doseq [in# (vals ~csym)]
+                   (~is-sym (~psym (~subj in#))
+                            (str "schema-driven: output violates :out for input " in#)))))]))))
+
+(defmacro deftrifecta-predicate
+  "Synthesize positive + negative tests for a PREDICATE `subject` against a
+   `:schema`. Kills both (constantly true) and (constantly false):
+
+     <name>-positive  for all x ~ generator(:schema), (true? (subject x))
+     <name>-negative  for each schema-corruption of a valid sample,
+                      (false? (subject x))
+
+   opts: :schema [required], :num-tests (100), :seed (0), :n-cases (8)."
+  [name subject {:keys [schema num-tests seed n-cases]
+                 :or {num-tests 100 seed 0 n-cases 8}}]
+  (let [subj        (subject-sym subject)
+        gsym        (gensym "gen")
+        is-sym      (if (:ns &env) 'cljs.test/is 'clojure.test/is)
+        deftest-sym (if (:ns &env) 'cljs.test/deftest 'clojure.test/deftest)]
+    `(do
+       (def ~gsym (input-gen ~schema))
+       (clojure.test.check.clojure-test/defspec ~(symbol (str name "-positive")) ~num-tests
+         (clojure.test.check.properties/for-all [x# ~gsym]
+           (true? (~subj x#))))
+       (~deftest-sym ~(symbol (str name "-negative"))
+         (let [goods# (vals (seeded-cases ~schema ~seed ~n-cases))]
+           (~is-sym (seq (mapcat #(schema-corruptions ~schema %) goods#))
+                    "no corruptions derivable — schema too permissive for a predicate negative test")
+           (doseq [good# goods#
+                   [label# bad#] (schema-corruptions ~schema good#)]
+             (~is-sym (false? (~subj bad#))
+                      (str "predicate accepted a schema-corrupted value: " label#))))))))

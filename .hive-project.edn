@@ -1,0 +1,4 @@
+{:project-id  "hive-schemas"
+ :description "Malli-schema bridging home: unified schema levers (register/derive/generate/type) plus optional schema-driven artifact synthesis. First submodule: schema -> hive-test property/golden/mutation tests for free."
+ :type        :library
+ :kg-backend  :datahike}
