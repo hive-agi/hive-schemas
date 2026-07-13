@@ -3,7 +3,8 @@
    synthesized property/mutation facets running as real tests."
   (:require [clojure.test :refer [deftest is]]
             [hive-schemas.test :as hst]
-            [hive-spi.schema.registry :as reg]))
+            [hive-spi.schema.registry :as reg]
+            [hive-test.trifecta :as tri]))
 
 ;; --- a schematized subject (bounds keep the product within long range;
 ;;     malli bounds flow straight into the synthesized input generator) ---
@@ -58,6 +59,19 @@
   (is (some? (hst/contract-violation ::in ::out calc-rel calc-bug)))
   ;; with no rel it degrades to output-conformance: a missing key is caught
   (is (some? (hst/contract-violation ::in ::out nil (fn [_] {:sum 1})))))
+
+;; --- the CLASSIC hive-test paradigm consuming registry-sourced facets:
+;;     :gen/:pred/:cases are lever calls in the literal spec — no hand-written
+;;     generator, oracle, or case table; mutation teeth are golden-derived
+;;     from the seeded schema cases.
+(tri/deftrifecta calc-lever-facets
+  hive-schemas.test-test/calc
+  {:gen         (hst/input-gen ::in)
+   :pred        (hst/output-oracle ::out)
+   :num-tests   200
+   :cases       (hst/seeded-cases ::in 0 6)
+   :golden-path "test/hive_schemas/__golden__/calc-lever-facets.edn"
+   :mutations   [["swaps :sum to subtraction" calc-bug]]})
 
 ;; --- the headline: property + mutation + CONTRACT tests synthesized from schemas ---
 (hst/deftrifecta-from-schema calc-tests hive-schemas.test-test/calc

@@ -14,6 +14,11 @@
    real teeth: pin the :out schema (e.g. [:and ::node [:map [:k [:= v]]]]) and
    pass a :rel (fn [in out] ...) that relates output to input.
 
+   The classic hive-test.trifecta/deftrifecta composes with the levers too:
+   source :gen/:pred/:cases from input-gen/output-oracle/seeded-cases calls in
+   the literal spec map — golden + property + mutation facets then run entirely
+   off the registered schema.
+
    Runtime levers:
      input-gen         ?in  -> test.check generator
      output-oracle     ?out -> (x -> boolean)      (m/validator; SO-safe)

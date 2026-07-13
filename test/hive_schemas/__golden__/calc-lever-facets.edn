@@ -1,0 +1,6 @@
+{:case-0 {:sum -1, :product 0},
+ :case-1 {:sum -2, :product 1},
+ :case-2 {:sum -1, :product 0},
+ :case-3 {:sum -2, :product 1},
+ :case-4 {:sum 1, :product 0},
+ :case-5 {:sum 3, :product 0}}
