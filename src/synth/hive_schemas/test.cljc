@@ -193,7 +193,9 @@
 
 (defn seeded-cases
   "{label input} — a reproducible, sorted sample of `n` inputs drawn from
-   `?in-schema`. Same seed yields the same cases."
+   `?in-schema`. Same seed yields the same cases. Mirrors
+   hive-spi.schema.gen/seeded-cases (coherence pinned by test); collapses into a
+   delegation once the pinned hive-spi ships it."
   [?in-schema seed n]
   (into (sorted-map)
     (map-indexed (fn [i v] [(keyword (str "case-" i)) v]))

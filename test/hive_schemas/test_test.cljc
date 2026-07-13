@@ -43,6 +43,15 @@
   (is (= (hst/seeded-cases ::in 42 6) (hst/seeded-cases ::in 42 6)))
   (is (= 6 (count (hst/seeded-cases ::in 42 6)))))
 
+(deftest seeded-cases-coheres-with-the-derivation-lever
+  ;; mirror == lever, whenever the pinned hive-spi ships seeded-cases
+  #?(:clj (if-let [lever (resolve 'hive-spi.schema.gen/seeded-cases)]
+            (doseq [schema [:hive/result [:int] [:map [:q :string]]]]
+              (is (= (hst/seeded-cases schema 42 8) (lever schema 42 8))
+                  (str schema ": mirror drifted from hive-spi.schema.gen/seeded-cases")))
+            (is true "pinned hive-spi predates seeded-cases — coherence deferred"))
+     :cljs (is true "clj-only: resolve-based lever probe")))
+
 ;; --- the contract lever: mg/check catches a wrong :sum, passes a correct calc ---
 (deftest contract-violation-test
   (is (nil?  (hst/contract-violation ::in ::out calc-rel calc)))
