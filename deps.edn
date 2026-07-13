@@ -11,7 +11,7 @@
 
   ;; hive-spi.schema.{registry,derive,gen,typed} — the single-source levers.
   ;; Published on Clojars; transitively pulls hive-dsl (Result).
-  io.github.hive-agi/hive-spi {:mvn/version "0.1.0"}}
+  io.github.hive-agi/hive-spi {:mvn/version "0.1.4"}}
 
  :aliases
  {;; OPTIONAL submodule: schema -> hive-test test synthesis. Pulls hive-test

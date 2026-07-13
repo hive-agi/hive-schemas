@@ -198,13 +198,11 @@
 
 (defn seeded-cases
   "{label input} — a reproducible, sorted sample of `n` inputs drawn from
-   `?in-schema`. Same seed yields the same cases. Mirrors
-   hive-spi.schema.gen/seeded-cases (coherence pinned by test); collapses into a
-   delegation once the pinned hive-spi ships it."
+   `?in-schema`. Same seed yields the same cases. Delegates to
+   hive-spi.schema.gen/seeded-cases (the derivation lever's :cases projection);
+   the coherence test guards the delegation."
   [?in-schema seed n]
-  (into (sorted-map)
-    (map-indexed (fn [i v] [(keyword (str "case-" i)) v]))
-    (sgen/sample ?in-schema {:size n :seed seed})))
+  (sgen/seeded-cases ?in-schema seed n))
 
 ;; =============================================================================
 ;; Contract — malli-native behavioral spec (mg/check over a :=> function schema)
