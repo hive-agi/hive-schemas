@@ -1,0 +1,7 @@
+#kaocha/v1
+;; Rung-E (ansatz differential) suite — kernel-only, run via `-M:ansatz-test`.
+;; Kept OUT of the default tests.edn so the pinned Maven build (`-M:test`) never
+;; scans test-ansatz/ and stays kernel-free.
+{:tests [{:id :verified
+          :test-paths ["test-ansatz"]
+          :ns-patterns ["-test$"]}]}
