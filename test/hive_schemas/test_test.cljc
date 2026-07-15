@@ -1,7 +1,7 @@
 (ns hive-schemas.test-test
   "Proves the schema -> free-tests bridge: runtime levers (unit) + the
    synthesized property/mutation facets running as real tests."
-  (:require [clojure.test :refer [deftest is]]
+  (:require [clojure.test :refer [deftest is testing]]
             [hive-schemas.test :as hst]
             [hive-spi.schema.registry :as reg]
             [hive-test.trifecta :as tri]))
@@ -39,6 +39,30 @@
            (mapv first muts)))
     (is (ok? (calc {:x 3 :y 4})))                                 ; good conforms
     (is (every? (fn [[_ f]] (not (ok? (f {:x 3 :y 4})))) muts))))  ; every mutant killed
+
+;; --- triad-in-one: malli facets + optional proof/model-check legs, one entry ---
+;; No :prove here (JVM-safe under plain :test): the malli facets run off the
+;; schema; the model-check facet SKIPs green because recife is absent.
+(hst/deftriad-from-schema triad-calc #'calc
+  {:in ::in :out ::out :rel calc-rel
+   :model-check {:model-spec {:init-state {} :components #{}}}})
+
+(deftest deftriad-composes-the-ladder
+  (testing "the malli conformance + relation facets are emitted as real test vars"
+    (is (some? #'triad-calc-conformance))
+    (is (some? #'triad-calc-relation)))
+  (testing "the model-check facet is emitted and SKIPs green when recife is absent"
+    (is (some? #'triad-calc-model-check)))
+  (testing "a :prove opt emits an ansatz PROOF facet (fully-qualified,
+            consumer-resolved) — checked by expansion, so no kernel is needed"
+    (let [form (macroexpand-1
+                '(hive-schemas.test/deftriad-from-schema tri-p my.ns/f
+                   {:in ::in :out ::out
+                    :prove {:params '[] :prop '(= x x) :tactics '[(rfl)]}}))]
+      (is (some #(and (seq? %)
+                      (= 'hive-schemas.proven/deftrifecta-proven (first %)))
+                (tree-seq seq? seq form))
+          "expansion carries the proven proof facet, decoupled from load"))))
 
 (deftest seeded-cases-deterministic-test
   (is (= (hst/seeded-cases ::in 42 6) (hst/seeded-cases ::in 42 6)))

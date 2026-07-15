@@ -343,3 +343,43 @@
                    [label# bad#] (schema-corruptions ~schema good#)]
              (~is-sym (false? (~subj bad#))
                       (str "predicate accepted a schema-corrupted value: " label#))))))))
+
+(defmacro deftriad-from-schema
+  "TRIAD-IN-ONE: the verification ladder from ONE registered schema, in one entry.
+   Emits the malli facets of `deftrifecta-from-schema` (conformance A / contract B
+   / mutation C / generative D) and, on demand, the two legs malli alone cannot
+   give:
+     :prove       {:params p :prop q :tactics t}  an ansatz kernel PROOF (rung F)
+                  via hive-schemas.proven/deftrifecta-proven — the malli+ansatz
+                  triad off ONE schema. Emitted as a fully-qualified form that
+                  expands in the CONSUMER's ns, so THIS ns stays ansatz-free at
+                  load: a :prove consumer adds the :ansatz alias and requires
+                  hive-schemas.proven. JVM-only (omitted on cljs).
+     :model-check {:model-spec s}  a recife TLA+/TLC facet (orthogonal). recife is
+                  resolved LAZILY at run time (requiring-resolve, guarded — an
+                  absent ns THROWS, so the guard turns that into nil), so the
+                  facet SKIPS green when recife is absent and adds no load-time
+                  dep. JVM-only (a cljs consumer gets a trivial skip).
+   All other opts pass through to `deftrifecta-from-schema` unchanged. The proof
+   and model-check facets are decoupled by construction (DIP): one registered
+   schema shapes the malli facets AND the ansatz a/defn the proof reasons about."
+  [name subject {:keys [prove model-check] :as opts}]
+  (let [base (dissoc opts :prove :model-check)
+        cljs? (boolean (:ns &env))]
+    `(do
+       (deftrifecta-from-schema ~name ~subject ~base)
+       ~@(when (and prove (not cljs?))
+           [`(hive-schemas.proven/deftrifecta-proven
+               ~(symbol (str name "-proof"))
+               :params ~(:params prove) :prop ~(:prop prove) :tactics ~(:tactics prove))])
+       ~@(when model-check
+           [(if cljs?
+              `(cljs.test/deftest ~(symbol (str name "-model-check"))
+                 (cljs.test/is true "model-check is JVM-only — skipped on cljs"))
+              `(clojure.test/deftest ~(symbol (str name "-model-check"))
+                 (if-let [check!# (try (requiring-resolve 'hive-recife.core/check!)
+                                       (catch Throwable _# nil))]
+                   (let [r# (check!# ~(:model-spec model-check))]
+                     (clojure.test/is (not= :fail (:status r#))
+                                      (str "model-check refuted: " (pr-str (:details r#)))))
+                   (clojure.test/is true "hive-recife absent — model-check skipped"))))]))))
