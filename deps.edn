@@ -33,7 +33,7 @@
   ;; Self-contained — pulls src/ansatz + the kernel + hive-test + kaocha. Kept
   ;; separate from :test so the pinned Maven build stays kernel-free.
   :ansatz-test
-  {:extra-paths ["src/ansatz" "test-ansatz"]
+  {:extra-paths ["src/ansatz" "src/synth" "test-ansatz"]
    :extra-deps  {org.replikativ/ansatz {:mvn/version "0.2.75"}
                  io.github.hive-agi/hive-test {:mvn/version "0.3.0"}
                  lambdaisland/kaocha {:mvn/version "1.91.1392"}}
