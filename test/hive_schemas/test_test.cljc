@@ -4,6 +4,7 @@
   (:require [clojure.test :refer [deftest is testing]]
             [hive-schemas.test :as hst]
             [hive-spi.schema.registry :as reg]
+            [hive-test.stateful :as sf]
             [hive-test.trifecta :as tri]))
 
 ;; --- a schematized subject (bounds keep the product within long range;
@@ -152,3 +153,40 @@
 
 (hst/deftrifecta-from-schema classify-tests hive-schemas.test-test/classify
   {:in ::tag-in :out ::tag-out :num-tests 50 :n-cases 5})
+
+;; =============================================================================
+;; Stateful machine levers: malli drives the command alphabet + the state law
+;; =============================================================================
+
+(reg/register! ::bump-args [:int {:min 1 :max 2}])
+(reg/register! ::counter   [:map [:n [:int {:min 0 :max 3}]]])
+
+(deftest command-gen-test
+  (let [args ((hst/command-gen ::bump-args {:seed 7 :n 4}) :irrelevant-model)]
+    (is (= 4 (count args)))
+    (is (every? #(<= 1 % 2) args))
+    (is (= args ((hst/command-gen ::bump-args {:seed 7 :n 4}) :another-model))
+        "deterministic and model-independent"))
+  (is (some? (hst/command-gen ::bump-args {:as :gen}))
+      ":as :gen yields a test.check generator (sampled, not enumerable)"))
+
+(deftest malli-drives-a-stateful-machine
+  ;; command args sampled from ::bump-args, state law pinned by ::counter —
+  ;; the machine spec carries no hand-written generator or oracle
+  (let [machine {:init       (fn [] {:n 0})
+                 :commands   {:bump {:args (hst/command-gen ::bump-args {:seed 1 :n 4})
+                                     :pre  (fn [m d] (<= (+ (:n m) d) 3))
+                                     :next (fn [m d] (update m :n + d))}}
+                 :invariants {:bounded (hst/model-step ::counter)}
+                 :goals      {:maxed (fn [m] (= 3 (:n m)))}}
+        r       (sf/check machine {:max-states 100 :max-depth 10})]
+    (is (:ok? r) (sf/report-str r))))
+
+(deftest model-step-catches-a-violation
+  (let [machine {:init       (fn [] {:n 0})
+                 :commands   {:over {:args (fn [_] [9])
+                                     :next (fn [m d] (update m :n + d))}}
+                 :invariants {:bounded (hst/model-step ::counter)}}
+        r       (sf/check machine {})]
+    (is (false? (:ok? r)))
+    (is (seq (:invariant-violations r)))))

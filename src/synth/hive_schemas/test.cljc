@@ -28,6 +28,11 @@
      schema-mutants    orig ?out -> [[label mutant-fn] ...] (sound; skips unfalsifiable)
      schema-corruptions ?s v    -> [[label corrupted-v] ...]
      seeded-cases      ?in seed n -> {label input} (deterministic)
+     command-gen       ?args -> (fn [model] [args ...]) — deterministic seeded
+                                sample feeding a hive-test.stateful command's
+                                :args (:as :gen -> a test.check generator)
+     model-step        ?model -> (fn [model] boolean) — state-conformance oracle
+                                for a stateful machine's :invariants
      contract-violation ?in ?out rel f -> nil | violation-msg (mg/check; rung B)"
   (:require [hive-spi.schema.registry :as reg]
             [hive-spi.schema.gen :as sgen]
@@ -203,6 +208,32 @@
    the coherence test guards the delegation."
   [?in-schema seed n]
   (sgen/seeded-cases ?in-schema seed n))
+
+;; =============================================================================
+;; Stateful machine levers — malli drives a hive-test.stateful Machine; hive-test
+;; stays malli-free (these return plain fns/collections, no schema types leak)
+;; =============================================================================
+
+(defn command-gen
+  "A hive-test.stateful command's `:args` from a malli schema: (fn [model]
+   [args ...]) yielding a deterministic seeded sample of `?args-schema`. The
+   explorer needs enumerable successors, so the default is a COLLECTION, not a
+   generator; narrowing to the state at hand belongs in the command's `:pre`.
+   With `:as :gen`, returns a test.check generator instead (sampled, not
+   enumerable — for interpreters that do not enumerate the state space)."
+  ([?args-schema] (command-gen ?args-schema {}))
+  ([?args-schema {:keys [seed n as] :or {seed 0 n 8 as :coll}}]
+   (case as
+     :gen  (sgen/generator ?args-schema)
+     :coll (let [args (vec (vals (sgen/seeded-cases ?args-schema seed n)))]
+             (fn [_model] args)))))
+
+(defn model-step
+  "A stateful machine's state-conformance oracle from a malli schema:
+   (fn [model] boolean), for an `:invariants` entry — every reachable state
+   must conform. Same SO-safe m/validator mechanism as output-oracle."
+  [?model-schema]
+  (m/validator (reg/schema ?model-schema)))
 
 ;; =============================================================================
 ;; Contract — malli-native behavioral spec (mg/check over a :=> function schema)
