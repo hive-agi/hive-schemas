@@ -31,7 +31,7 @@
 (def ^:private src-dirs (:src-dirs cfg ["src"]))
 (def ^:private jar-file (format "target/%s-%s.jar" (name lib) version))
 
-(defn- basis [] (b/create-basis {:project "deps.edn"}))
+(defn- basis [] (b/create-basis {:project "deps.edn" :user :standard}))
 
 (defn- write-pom []
   (b/write-pom
