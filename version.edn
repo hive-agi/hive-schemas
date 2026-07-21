@@ -5,4 +5,4 @@
  :src-dirs ["src" "src/synth"]
  ;; when copying the "src" root, drop the nested source roots (they are copied
  ;; from their own root at the correct path; src/ansatz is opt-in, not shipped)
- :ignores  [".*synth/.*" ".*ansatz/.*" ".*~$"]}
+ :ignores  [".*synth/.*" ".*ansatz/.*" ".*~$"] :publish  :clojars}
