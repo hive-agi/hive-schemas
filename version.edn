@@ -2,7 +2,7 @@
  :minor    1
  :license  {:name "MIT" :url "https://opensource.org/licenses/MIT"}
  :scm-url  "https://github.com/hive-agi/hive-schemas"
- :src-dirs ["src" "src/synth"]
+ :src-dirs ["src" "src/synth" "resources"]
  ;; when copying the "src" root, drop the nested source roots (they are copied
  ;; from their own root at the correct path; src/ansatz is opt-in, not shipped)
  :ignores  [".*synth/.*" ".*ansatz/.*" ".*~$"] :publish  :clojars}
