@@ -107,6 +107,52 @@
 ;; resolve-map-schema reach: :maybe deref + :or/:multi intersection
 ;; =============================================================================
 
+;; =============================================================================
+;; Arglist :in — a MULTI-ARG subject schematized as [:cat A B]
+;; =============================================================================
+
+(defn scale
+  "Multi-arg subject."
+  [factor xs]
+  {:factor factor
+   :scaled (mapv #(* factor %) xs)})
+
+(def ^:private scale-args
+  [:cat [:int {:min -1000 :max 1000}] [:vector [:int {:min -1000 :max 1000}]]])
+
+(def ^:private scale-out
+  [:map {:closed true}
+   [:factor :int]
+   [:scaled [:vector :int]]])
+
+(hst/deftrifecta-from-schema scale-tests hive-schemas.test-test/scale
+  {:in        scale-args
+   :out       scale-out
+   :rel       (fn [[factor xs] out]
+                (and (= factor (:factor out))
+                     (= (mapv #(* factor %) xs) (:scaled out))))
+   :contract  true
+   :num-tests 50
+   :n-cases   5})
+
+(deftest schema-arity-dispatches-on-schema-type
+  (testing ":cat / :catn are arglists; every other schema is one value"
+    (is (= :arglist (hst/schema-arity [:cat :int :string])))
+    (is (= :arglist (hst/schema-arity [:catn [:a :int] [:b :string]])))
+    (is (= :value (hst/schema-arity [:map [:a :int]])))
+    (is (= :value (hst/schema-arity [:vector :int])))
+    (is (= :value (hst/schema-arity :int))))
+  (testing "arglist-schema? agrees"
+    (is (true? (hst/arglist-schema? [:cat :int])))
+    (is (true? (hst/arglist-schema? [:catn [:a :int]])))
+    (is (false? (hst/arglist-schema? [:map [:a :int]])))))
+
+(deftest applier-applies-arglists-and-passes-values
+  (testing "an arglist schema spreads the generated seq over the subject"
+    (is (= 7 ((hst/applier [:cat :int :int]) + [3 4]))))
+  (testing "any other schema hands the value over whole"
+    (is (= {:a 1} ((hst/applier [:map [:a :int]]) identity {:a 1})))))
+
 (deftest required-entries-unions-test
   ;; :maybe derefs to the inner map (card: explain -> [:maybe :map])
   (is (= [:a :b] (mapv first (hst/required-entries [:maybe [:map [:a :int] [:b :string]]]))))

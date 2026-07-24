@@ -74,6 +74,33 @@
   [?out-schema]
   (m/validator (reg/schema ?out-schema)))
 
+(defmulti schema-arity
+  "How a value generated from an `:in` schema reaches the subject:
+     :arglist — the generated value IS an argument list; `apply` it
+     :value   — the generated value is one argument; pass it directly
+
+   Dispatches on the malli schema type. OCP: a new arglist-shaped schema type
+   is a new defmethod."
+  (fn [?schema] (m/type (reg/schema ?schema))))
+
+(defmethod schema-arity :cat [_] :arglist)
+(defmethod schema-arity :catn [_] :arglist)
+(defmethod schema-arity :default [_] :value)
+
+(defn arglist-schema?
+  "True when `?schema` describes an ARGUMENT LIST rather than a single value —
+   the convention malli's own :=> uses for its arguments."
+  [?schema]
+  (= :arglist (schema-arity ?schema)))
+
+(defn applier
+  "(fn [subject in] ...) applying a generated `:in` value to `subject`
+   according to `schema-arity`."
+  [?in-schema]
+  (if (arglist-schema? ?in-schema)
+    (fn [f in] (apply f in))
+    (fn [f in] (f in))))
+
 (defn- deref-toward
   "Deref/descend `?schema` one level at a time to a fixpoint, toward a STRUCTURAL
    schema (:map, :or, :multi). SO-safe on RECURSIVE schemas (unlike m/deref-all).
@@ -240,14 +267,20 @@
 ;; =============================================================================
 
 (defn contract-schema
-  "A malli function schema [:=> [:cat ?in] ?out guard] bound to the hive-spi
-   registry (so registry-ref inputs/outputs resolve). Models a SINGLE-arg
-   subject: the guard receives [[in] ret], so a relation `rel` of (fn [in out])
-   is adapted to (fn [[[i] r]] (rel i r)). With no `rel` the schema still
-   pins the OUTPUT, so mg/check subsumes an output-conformance check."
+  "A malli function schema [:=> args ?out guard] bound to the hive-spi registry.
+
+   An ARGLIST `?in` (:cat / :catn) is used as the argument list directly and the
+   guard receives [args ret]. Any other `?in` models a SINGLE argument: it is
+   wrapped as [:cat ?in] and the guard receives [[in] ret]. With no `rel` the
+   schema still pins the OUTPUT."
   [?in ?out rel]
-  (reg/schema [:=> [:cat ?in] ?out
-               (if rel [:fn (fn [[[i] r]] (rel i r))] :any)]))
+  (let [arglist? (arglist-schema? ?in)
+        args     (if arglist? ?in [:cat ?in])]
+    (reg/schema [:=> args ?out
+                 (cond
+                   (not rel) :any
+                   arglist?  [:fn (fn [[as r]] (rel as r))]
+                   :else     [:fn (fn [[[i] r]] (rel i r))])])))
 
 (defn contract-violation
   "nil when `subject` satisfies the [:=> ?in ?out guard] contract across
@@ -279,11 +312,18 @@
 
    opts:
      :in          input schema (registry key or malli form)      [required]
+                  An ARGLIST schema (:cat / :catn) schematizes a MULTI-ARG
+                  subject and is applied; any other schema models a single
+                  argument and is passed directly. :rel and the golden/
+                  mutation facets see the same value either way, so a
+                  multi-arg :rel destructures: (fn [[a b] out] ...).
      :out         output schema (registry key or malli form)     [required]
      :rel         (fn [in out] boolean) relating output to input [optional but
                   RECOMMENDED — conformance alone rarely has teeth]
-     :idempotent? emit (= (subject (subject x)) (subject x))      [optional]
-     :contract    emit a malli-native mg/check facet over a [:=> [:cat :in] :out
+     :idempotent? emit (= (subject (subject x)) (subject x))      [optional;
+                  undefined for an arglist :in — a subject's output is not an
+                  argument list, so this REFUSES rather than mis-synthesizing]
+     :contract    emit a malli-native mg/check facet over a [:=> :in :out
                   :fn-of-:rel] function schema (rung B)           [optional]
      :mutation    emit the mutation facet + non-vacuity guard     (default true)
      :golden-path relative EDN path — snapshot {case -> {:in :out}} over the
@@ -307,23 +347,30 @@
         gsym        (gensym "gen")
         psym        (gensym "oracle")
         csym        (gensym "cases")
+        asym        (gensym "apply")
         is-sym      (if (:ns &env) 'cljs.test/is 'clojure.test/is)
         deftest-sym (if (:ns &env) 'cljs.test/deftest 'clojure.test/deftest)]
     `(do
        (def ~gsym (input-gen ~in))
        (def ~psym (output-oracle ~out))
        (def ~csym (seeded-cases ~in ~seed ~n-cases))
+       (def ~asym (applier ~in))
        (tc/defspec ~(symbol (str name "-conformance")) ~num-tests
          (prop/for-all [in# ~gsym]
-           (~psym (~subj in#))))
+           (~psym (~asym ~subj in#))))
        ~@(when rel
            [`(tc/defspec ~(symbol (str name "-relation")) ~num-tests
                (prop/for-all [in# ~gsym]
-                 (~rel in# (~subj in#))))])
+                 (~rel in# (~asym ~subj in#))))])
        ~@(when idempotent?
-           [`(tc/defspec ~(symbol (str name "-idempotent")) ~num-tests
+           [`(when (arglist-schema? ~in)
+               (throw (ex-info (str ":idempotent? is undefined for an arglist :in — "
+                                    "a subject's output is not an argument list, so "
+                                    "(subject (subject args)) cannot be formed")
+                               {:in (quote ~in) :subject (quote ~subj)})))
+            `(tc/defspec ~(symbol (str name "-idempotent")) ~num-tests
                (prop/for-all [in# ~gsym]
-                 (= (~subj (~subj in#)) (~subj in#))))])
+                 (= (~subj (~asym ~subj in#)) (~asym ~subj in#))))])
        ~@(when contract
            [`(~deftest-sym ~(symbol (str name "-contract"))
                (let [v# (contract-violation ~in ~out ~rel ~subj)]
@@ -337,13 +384,13 @@
                (schema-mutants ~subj ~out)
                (fn []
                  (doseq [in# (vals ~csym)]
-                   (~is-sym (~psym (~subj in#))
+                   (~is-sym (~psym (~asym ~subj in#))
                             (str "schema-driven: output violates :out for input " in#)))))])
        ~@(when golden-path
            [`(golden/deftest-golden-fn ~(symbol (str name "-golden"))
                ~golden-path
                (fn [] (into (sorted-map)
-                            (map (fn [[label# in#]] [label# {:in in# :out (~subj in#)}]))
+                            (map (fn [[label# in#]] [label# {:in in# :out (~asym ~subj in#)}]))
                             ~csym)))]))))
 
 (defmacro deftrifecta-predicate
