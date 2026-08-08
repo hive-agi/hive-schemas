@@ -54,7 +54,7 @@
                  "--middleware" "[cider.nrepl/cider-middleware]"
                  "--port" "7956"]}
 
-  ;; Clojars publishing. version = the repo's VERSION file (see build.clj).
+  ;; Clojars publishing. version = the repo's VERSION file.
   ;; Ships src + src/synth (facade + test-synth bridge). hive-test is an
   ;; OPTIONAL dep the consumer adds for hive-schemas.test; ansatz for the
   ;; rung-E verified ns (src/ansatz, not in the jar).
