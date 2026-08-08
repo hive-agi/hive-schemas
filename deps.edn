@@ -26,7 +26,7 @@
   ;; Scope: Nat/Bool/List Nat. Core + test-synth stay ansatz-free.
   :ansatz
   {:extra-paths ["src/ansatz"]
-   :extra-deps  {org.replikativ/ansatz {:mvn/version "0.2.75"}}}
+   :extra-deps  {org.replikativ/ansatz {:mvn/version "0.2.79"}}}
 
   ;; Rung-E PROOF suite: boots the ansatz kernel and runs the differential
   ;; facet against a real a/defn subject (test-ansatz/, its own kaocha config).
@@ -34,7 +34,7 @@
   ;; separate from :test so the pinned Maven build stays kernel-free.
   :ansatz-test
   {:extra-paths ["src/ansatz" "src/synth" "test-ansatz"]
-   :extra-deps  {org.replikativ/ansatz {:mvn/version "0.2.75"}
+   :extra-deps  {org.replikativ/ansatz {:mvn/version "0.2.79"}
                  io.github.hive-agi/hive-test {:mvn/version "0.3.10"}
                  lambdaisland/kaocha {:mvn/version "1.91.1392"}}
    :main-opts   ["-m" "kaocha.runner" "--config-file" "tests.ansatz.edn"]}
