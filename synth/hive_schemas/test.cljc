@@ -4,11 +4,16 @@
    A malli schema drives hive-test property + mutation tests with no
    hand-written generator, oracle, or mutant. hive-test never sees malli.
 
-   Two synthesis macros:
+   Three synthesis macros:
      deftrifecta-from-schema  in/out schematized fn -> conformance + (optional
                               relational / idempotence) property + mutation
      deftrifecta-predicate    a predicate + a schema -> positive (valid inputs
                               accepted) + negative (corrupted inputs rejected)
+     deftrifecta-from-multi   a MULTIMETHOD + an arglist schema + a closed
+                              dispatch vocabulary -> totality, closure and
+                              reachability of the dispatch seam. `fn?` is false
+                              for a multimethod, so m/=> cannot contract one;
+                              this is the path that can.
 
    Conformance alone is a WEAK oracle (it only checks the output SHAPE). For
    real teeth: pin the :out schema (e.g. [:and ::node [:map [:k [:= v]]]]) and
@@ -34,7 +39,11 @@
                                 :args (:as :gen -> a test.check generator)
      model-step        ?model -> (fn [model] boolean) — state-conformance oracle
                                 for a stateful machine's :invariants
-     contract-violation ?in ?out rel f -> nil | violation-msg (mg/check; rung B)"
+     contract-violation ?in ?out rel f -> nil | violation-msg (mg/check; rung B)
+     multimethod?      x -> true when x is a multimethod (fn? is false for one)
+     dispatch-fn       multi -> its dispatch function
+     dispatch-vocabulary ?s -> [v ...] | nil when the schema is OPEN
+     undispatched      multi vocabulary -> declared values with no method"
   (:require [hive-spi.schema.registry :as reg]
             [hive-spi.schema.gen :as sgen]
             [hive-test.mutation :as mut]
@@ -53,10 +62,11 @@
             [hive-schemas.plan :as plan]
             [hive-schemas.vocab :as vocab])
   ;; Self-require macros so cljs consumers pull deftrifecta-from-schema /
-  ;; -predicate via plain :require/:refer. The macros are pure codegen: the only
-  ;; platform-specific symbols they emit are deftest / is (chosen via (:ns &env)
-  ;; below); defspec / for-all / golden.* / mutation.* live in .cljc, so their
-  ;; fully-qualified emissions resolve identically on clj and cljs.
+  ;; -predicate / -from-multi via plain :require/:refer. The macros are pure
+  ;; codegen: the only platform-specific symbols they emit are deftest / is
+  ;; (chosen via (:ns &env) below); defspec / for-all / golden.* / mutation.*
+  ;; live in .cljc, so their fully-qualified emissions resolve identically on
+  ;; clj and cljs.
   #?(:cljs (:require-macros [hive-schemas.test])))
 
 ;; SPDX-License-Identifier: MIT
@@ -328,6 +338,55 @@
           ret (get chk :malli.core/result)]
       (str "contract violated — input " (pr-str in) " -> " (pr-str ret)))))
 
+
+;; =============================================================================
+;; Multimethod dispatch seams
+;; =============================================================================
+
+(defn multimethod?
+  "True when `x` is a multimethod.
+
+   `fn?` is FALSE for one on the JVM: MultiFn implements IFn but not
+   clojure.lang.Fn. malli's `:=>` validator demands `fn?`, so an `m/=>` on a
+   multimethod fails `malli.instrument/check` unconditionally, whatever the
+   behaviour."
+  [x]
+  #?(:clj  (instance? clojure.lang.MultiFn x)
+     :cljs (instance? cljs.core/MultiFn x)))
+
+(defn dispatch-fn
+  "The dispatch function of multimethod `f`. Throws when `f` is not one."
+  [f]
+  (when-not (multimethod? f)
+    (throw (ex-info "not a multimethod, so it has no dispatch function"
+                    {:value f})))
+  #?(:clj  (.dispatchFn ^clojure.lang.MultiFn f)
+     :cljs (.-dispatch-fn f)))
+
+(defn dispatch-vocabulary
+  "The CLOSED set of dispatch values `?schema` admits, as a vector, or nil when
+   the schema is OPEN. Reads `:enum` children and a `:=` literal, unions the
+   branches of an `:or`, and descends registry-key / `:ref` / `:schema`
+   indirection first.
+
+   nil is the answer for `:keyword`, `:any` and every other open schema: an open
+   dispatch set has no totality to check, so a caller that gates on one is
+   asserting nothing."
+  [?schema]
+  (let [s (deref-fixpoint ?schema)]
+    (case (m/type s)
+      :enum (vec (m/children s))
+      :=    (vec (take 1 (m/children s)))
+      :or   (let [vs (map dispatch-vocabulary (m/children s))]
+              (when (every? some? vs)
+                (vec (distinct (apply concat vs)))))
+      nil)))
+
+(defn undispatched
+  "The values of `vocabulary` that multimethod `f` has no method for."
+  [f vocabulary]
+  (vec (remove #(get-method f %) vocabulary)))
+
 ;; =============================================================================
 ;; Codegen
 ;; =============================================================================
@@ -459,6 +518,97 @@
              (~is-sym (false? (~subj bad#))
                       (str "predicate accepted a schema-corrupted value: " label#))))))))
 
+(defmacro deftrifecta-from-multi
+  "Synthesize tests for a MULTIMETHOD `subject` — the dispatch-seam counterpart
+   of `deftrifecta-from-schema`.
+
+   `m/=>` cannot carry this contract. `fn?` is FALSE for a multimethod and
+   malli's `:=>` validator demands it, so an `m/=>` on one fails
+   `malli.instrument/check` unconditionally, whatever the behaviour. The
+   argument-list schema is declared as an ordinary value and asserted here.
+
+   The vocabulary is read from `:dispatch`, never from the subject's own
+   defmethod table: a totality check whose universe is derived from the methods
+   it is checking passes by construction.
+
+   opts:
+     :args      arglist schema (:cat / :catn) for one CALL              [required]
+     :dispatch  schema whose CLOSED vocabulary the dispatch value must
+                inhabit — an :enum, a :=, or an :or of those            [required]
+     :out       output schema; emits a conformance facet that CALLS the
+                multimethod over the seeded cases                       [optional]
+     :total?    require that no :default method exists, so a dispatch value
+                outside the vocabulary is a hard error                  (default true)
+     :num-tests property iterations                                     (default 100)
+     :seed      coverage-sample seed                                    (default 0)
+     :n-cases   coverage-sample size                                    (default 32)
+
+   Facets emitted (each a distinct var):
+     <name>-is-a-dispatch-seam    subject is a multimethod, :args is an arglist
+                                  schema, and no m/=> is registered for it
+     <name>-vocabulary-is-closed  :dispatch names a non-empty closed set
+     <name>-covers-the-vocabulary every declared value has a method
+     <name>-has-no-default-method no :default catch-all              [when :total?]
+     <name>-dispatch-stays-in-vocabulary
+                                  for all args ~ :args, the dispatch value is in
+                                  the vocabulary
+     <name>-args-reach-the-vocabulary
+                                  the seeded sample REACHES every declared value
+     <name>-conformance           for all seeded args, output conforms [when :out]"
+  [name subject {:keys [args dispatch out total? num-tests seed n-cases]
+                 :or {total? true num-tests 100 seed 0 n-cases 32}}]
+  (let [subj        (subject-sym subject)
+        gsym        (gensym "gen")
+        vsym        (gensym "vocab")
+        dsym        (gensym "dispatch")
+        csym        (gensym "cases")
+        cljs?       (boolean (:ns &env))
+        is-sym      (if cljs? 'cljs.test/is 'clojure.test/is)
+        deftest-sym (if cljs? 'cljs.test/deftest 'clojure.test/deftest)]
+    `(do
+       (def ~vsym (dispatch-vocabulary ~dispatch))
+       (def ~dsym (dispatch-fn ~subj))
+       (def ~gsym (input-gen ~args))
+       (def ~csym (seeded-cases ~args ~seed ~n-cases))
+       (~deftest-sym ~(symbol (str name "-is-a-dispatch-seam"))
+         (~is-sym (multimethod? ~subj)
+                  "not a multimethod — this subject can take the m/=> path, so use deftrifecta-from-schema")
+         (~is-sym (arglist-schema? ~args)
+                  ":args must be an arglist schema (:cat / :catn) — a multimethod is called with an argument LIST")
+         ~@(when-not cljs?
+             [`(~is-sym (nil? (get-in (m/function-schemas)
+                                      [(-> (var ~subj) meta :ns ns-name)
+                                       (-> (var ~subj) meta :name)]))
+                        (str "an m/=> is registered for " (quote ~subj)
+                             " — `fn?` is false for a multimethod, so that contract can only ever fail"
+                             " malli.instrument/check; delete it and let this facet carry the args schema"))]))
+       (~deftest-sym ~(symbol (str name "-vocabulary-is-closed"))
+         (~is-sym (seq ~vsym)
+                  ":dispatch is an OPEN schema — it admits no closed vocabulary, so there is no totality to check"))
+       (~deftest-sym ~(symbol (str name "-covers-the-vocabulary"))
+         (let [missing# (undispatched ~subj ~vsym)]
+           (~is-sym (empty? missing#)
+                    (str "declared dispatch values with no method: " (pr-str missing#)))))
+       ~@(when total?
+           [`(~deftest-sym ~(symbol (str name "-has-no-default-method"))
+               (~is-sym (nil? (get-method ~subj :default))
+                        "a :default method routes an unanticipated dispatch value silently — pass :total? false to accept that"))])
+       (tc/defspec ~(symbol (str name "-dispatch-stays-in-vocabulary")) ~num-tests
+         (prop/for-all [as# ~gsym]
+           (contains? (set ~vsym) (apply ~dsym as#))))
+       (~deftest-sym ~(symbol (str name "-args-reach-the-vocabulary"))
+         (let [reached#   (set (map (fn [as#] (apply ~dsym as#)) (vals ~csym)))
+               unreached# (vec (remove reached# ~vsym))]
+           (~is-sym (empty? unreached#)
+                    (str "the :args generator never dispatches to " (pr-str unreached#)
+                         " — every property over those values is vacuous"))))
+       ~@(when out
+           [`(~deftest-sym ~(symbol (str name "-conformance"))
+               (let [ok?# (output-oracle ~out)]
+                 (doseq [as# (vals ~csym)]
+                   (~is-sym (ok?# (apply ~subj as#))
+                            (str "output violates :out for args " (pr-str as#))))))]))))
+
 (defmacro deftriad-from-schema
   "TRIAD-IN-ONE: the verification ladder from ONE registered schema, in one entry.
    Emits the malli facets of `deftrifecta-from-schema` (conformance A / contract B
@@ -552,3 +702,11 @@
 
 (m/=> contract-violation
       [:=> [:cat vocab/SchemaRef vocab/SchemaRef :any :any] vocab/Violation])
+
+(m/=> multimethod? [:=> [:cat :any] :boolean])
+
+(m/=> dispatch-fn [:=> [:cat :any] ifn?])
+
+(m/=> dispatch-vocabulary [:=> [:cat vocab/SchemaRef] [:maybe [:vector :any]]])
+
+(m/=> undispatched [:=> [:cat :any [:sequential :any]] [:vector :any]])

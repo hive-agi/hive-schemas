@@ -52,6 +52,27 @@
             (conj (suffixed-defs name-node ["-positive" "-negative"])
                   (do-node [subject-node opts-node])))}))
 
+(defn- multi-suffixes
+  "Facet suffixes `opts` selects for a dispatch seam, in emission order. Mirrors
+   deftrifecta-from-multi: :total? defaults to TRUE, so only an explicit false
+   drops the no-default facet."
+  [opts]
+  (cond-> ["-is-a-dispatch-seam"
+           "-vocabulary-is-closed"
+           "-covers-the-vocabulary"]
+    (not= false (:total? opts)) (conj "-has-no-default-method")
+    :always                     (conj "-dispatch-stays-in-vocabulary"
+                                      "-args-reach-the-vocabulary")
+    (:out opts)                 (conj "-conformance")))
+
+(defn deftrifecta-from-multi
+  "Register the generated dispatch-seam facets."
+  [{:keys [node]}]
+  (let [[_ name-node subject-node opts-node] (:children node)]
+    {:node (do-node
+            (conj (suffixed-defs name-node (multi-suffixes (opts-sexpr opts-node)))
+                  (do-node [subject-node opts-node])))}))
+
 (defn deftriad-from-schema
   "Register base facets plus optional proof and model-check facets."
   [{:keys [node]}]

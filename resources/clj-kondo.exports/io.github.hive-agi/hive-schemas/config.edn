@@ -11,4 +11,5 @@
    hive-schemas.test/deftriad-from-schema    hive-schemas.hooks.test/deftriad-from-schema
    hive-schemas.test/deftriad-from-plan hive-schemas.hooks.test/deftriad-from-plan
    hive-schemas.wire/deftrifecta-wire hive-schemas.hooks.test/deftrifecta-wire
-   hive-schemas.port/deftest-port-contract hive-schemas.hooks.test/deftest-port-contract}}}
+   hive-schemas.port/deftest-port-contract hive-schemas.hooks.test/deftest-port-contract
+   hive-schemas.test/deftrifecta-from-multi hive-schemas.hooks.test/deftrifecta-from-multi}}}
