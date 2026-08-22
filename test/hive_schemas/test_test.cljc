@@ -42,6 +42,38 @@
     (is (ok? (calc {:x 3 :y 4})))                                 ; good conforms
     (is (every? (fn [[_ f]] (not (ok? (f {:x 3 :y 4})))) muts))))  ; every mutant killed
 
+;; --- scalar outputs: required-entries is map-shaped, so an :enum or a bounded
+;;     number synthesized ZERO mutants and the non-vacuity guard fired ---
+
+(reg/register! ::zone     [:enum :domestic :mercosur :international])
+(reg/register! ::priority [:int {:min 1 :max 9}])
+
+(defn zone-of     [n] (nth [:domestic :mercosur :international] (mod n 3)))
+(defn priority-of [n] (inc (mod n 9)))
+
+(deftest scalar-mutants-enum-test
+  (let [muts (hst/schema-mutants zone-of ::zone)
+        ok?  (hst/output-oracle ::zone)]
+    (is (seq muts) "an :enum output must synthesize at least one mutant")
+    (is (ok? (zone-of 2)))
+    (is (every? (fn [[_ f]] (not (ok? (f 2)))) muts))))
+
+(deftest scalar-mutants-bounds-test
+  (let [muts (hst/schema-mutants priority-of ::priority)
+        ok?  (hst/output-oracle ::priority)]
+    (testing "both bounds become mutants"
+      (is (contains? (set (mapv first muts)) "const-0"))
+      (is (contains? (set (mapv first muts)) "const-10")))
+    (is (ok? (priority-of 4)))
+    (is (every? (fn [[_ f]] (not (ok? (f 4)))) muts))))
+
+(deftest scalar-mutants-soundness-test
+  (testing "a schema that rejects nothing yields no mutants rather than a survivor"
+    (is (empty? (hst/schema-mutants identity :any))))
+  (testing "map outputs are untouched by the scalar branch"
+    (is (= ["drop-key-:sum" "assoc-const-:sum" "drop-key-:product" "assoc-const-:product"]
+           (mapv first (hst/schema-mutants calc ::out))))))
+
 ;; --- triad-in-one: malli facets + optional proof/model-check legs, one entry ---
 ;; No :prove here (JVM-safe under plain :test): the malli facets run off the
 ;; schema; the model-check facet SKIPs green because recife is absent.

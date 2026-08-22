@@ -26,6 +26,7 @@
                                 :schema; :or/:multi -> keys required in every branch)
      wrong-value-for   child -> a value the child REJECTS, or ::unfalsifiable
      schema-mutants    orig ?out -> [[label mutant-fn] ...] (sound; skips unfalsifiable)
+     scalar-mutants    ?out -> [[label mutant-fn] ...] for a non-map output
      schema-corruptions ?s v    -> [[label corrupted-v] ...]
      seeded-cases      ?in seed n -> {label input} (deterministic)
      command-gen       ?args -> (fn [model] [args ...]) — deterministic seeded
@@ -115,6 +116,20 @@
                               (when-not (= (m/form d) (m/form s))
                                 (recur d (inc n)))))))
 
+(defn- deref-fixpoint
+  "Unwrap `?schema`'s registry-key / :ref / :schema indirection to a fixpoint.
+   Unlike `deref-toward` it targets no particular type: it answers \"what schema
+   is this, really\", which is what reading :min/:max off one requires. A
+   registry-keyed schema presents as a ::m/schema wrapper whose properties are
+   nil, so a lever that skips this step is blind to exactly the schemas the
+   house convention tells you to register."
+  [?schema]
+  (loop [s (reg/schema ?schema) n 0]
+    (let [d (m/deref s)]
+      (if (or (> n 32) (= (m/form d) (m/form s)))
+        s
+        (recur d (inc n))))))
+
 (defn- map-entries
   "[[k child-schema] ...] for the non-optional entries of a :map schema."
   [s]
@@ -190,22 +205,47 @@
       v
       ::unfalsifiable)))
 
+(defn scalar-mutants
+  "[[label mutant-fn] ...] for a NON-MAP `?out-schema` — constant returns of
+   values the schema provably REJECTS: one type-distinct value from the ladder,
+   plus `(dec :min)` / `(inc :max)` when the schema carries numeric bounds.
+
+   A bound mutant is the one that has teeth on a scalar: it survives every
+   subject that ignores the range and dies on every subject that respects it.
+   Values that the schema accepts are dropped, so the set stays sound."
+  [?out-schema]
+  (let [rejects (complement (m/validator (reg/schema ?out-schema)))
+        {:keys [min max]} (m/properties (deref-fixpoint ?out-schema))]
+    (->> (cond-> [(wrong-value-for ?out-schema)]
+           (number? min) (conj (dec min))
+           (number? max) (conj (inc max)))
+         (remove #{::unfalsifiable})
+         (filter rejects)
+         (distinct)
+         (mapv (fn [v] (mut/as-pair [(str "const-" (pr-str v)) (mc/always v)]))))))
+
 (defn schema-mutants
   "[[label mutant-fn] ...] — for each required OUTPUT key of `?out-schema`, a
    drop-key mutant (a dropped required key always violates -> a guaranteed kill)
    and, WHEN a rejecting value exists, a wrong-type mutant. Keys whose schema
    accepts everything (:any) get drop-key only, never a degenerate wrong-type
    that would silently survive. Each mutant WRAPS `orig` (the real fn value,
-   captured before any var rebind)."
+   captured before any var rebind).
+
+   `?out-schema` with no required entries is a SCALAR output (an :enum, a
+   bounded number, a string) and delegates to `scalar-mutants`."
   [orig ?out-schema]
-  (vec
-    (mapcat
-      (fn [[k child]]
-        (let [wrong (wrong-value-for child)]
-          (cond-> [(mut/as-pair (mc/drop-key orig k))]
-            (not= wrong ::unfalsifiable)
-            (conj (mut/as-pair (mc/assoc-const orig k wrong))))))
-      (required-entries ?out-schema))))
+  (let [entries (required-entries ?out-schema)]
+    (if (seq entries)
+      (vec
+        (mapcat
+          (fn [[k child]]
+            (let [wrong (wrong-value-for child)]
+              (cond-> [(mut/as-pair (mc/drop-key orig k))]
+                (not= wrong ::unfalsifiable)
+                (conj (mut/as-pair (mc/assoc-const orig k wrong))))))
+          entries))
+      (scalar-mutants ?out-schema))))
 
 (defn schema-corruptions
   "[[label corrupted-value] ...] — apply each required-key drop and (where a
@@ -484,6 +524,8 @@
       [:=> [:cat vocab/SchemaRef] [:maybe [:sequential [:tuple :any vocab/SchemaRef]]]])
 
 (m/=> wrong-value-for [:=> [:cat vocab/SchemaRef] :any])
+
+(m/=> scalar-mutants [:=> [:cat vocab/SchemaRef] [:sequential [:tuple :string :any]]])
 
 (m/=> schema-mutants [:=> [:cat :any vocab/SchemaRef] [:sequential [:tuple :any :any]]])
 
