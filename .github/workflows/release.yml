@@ -11,6 +11,7 @@ on:
       - 'synth/**'
       - 'ansatz/**'
       - 'typed/**'
+      - 'raster/**'
       - 'resources/**'
       - 'deps.edn'
   workflow_dispatch:

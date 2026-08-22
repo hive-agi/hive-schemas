@@ -2,8 +2,9 @@
  :minor    1
  :license  {:name "MIT" :url "https://opensource.org/licenses/MIT"}
  :scm-url  "https://github.com/hive-agi/hive-schemas"
- ;; Sibling source roots, none nested inside another: src (core) plus the three
+ ;; Sibling source roots, none nested inside another: src (core) plus the four
  ;; optional layers, each shipped at the path its namespace resolves at. Their
- ;; heavy deps are the consumer's to add.
- :src-dirs ["src" "synth" "ansatz" "typed" "resources"]
+ ;; heavy deps are the consumer's to add. source-roots-test fails when a root on
+ ;; disk is missing from this vector or from release.yml's push paths.
+ :src-dirs ["src" "synth" "ansatz" "typed" "raster" "resources"]
  :publish  :clojars}
