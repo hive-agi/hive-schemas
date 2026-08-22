@@ -18,7 +18,8 @@
             [raster.knn :as knn]
             [raster.numeric :as rnum]
             [raster.par :as par]
-            [raster.core :refer [deftm]]))
+            [hive-schemas.schema :as hss]
+            [raster.core]))
 
 ;; SPDX-License-Identifier: MIT
 ;; Copyright (C) 2026 Pedro Gomes Branquinho (BuddhiLW) <pedrogbranquinho@gmail.com>
@@ -54,10 +55,21 @@
 (def cumsum-overload (first (hr/overloads #'par/cumsum)))
 (def l2norm-overload (first (hr/overloads #'knn/l2-normalize!)))
 
+(defn fresh-parametric-deftm!
+  "Define and return a NEW `(All [T])` deftm var under a gensym'd name.
+
+   Gensym'd because the claim under test is about a dispatch table nothing has
+   touched yet, and a table mutated by an earlier run of the same test would
+   make the assertion pass or fail for the wrong reason. `deftm` is a macro, so
+   dynamic registration goes through `eval` — raster's own documented idiom.
+   `All` is the macro's vocabulary, not a var, so it stays unqualified."
+  []
+  (eval (list 'raster.core/deftm (gensym "probe-scale-")
+              (list 'All '[T] '[alpha :- T, x :- T] :- 'T
+                    (list 'raster.numeric/* 'alpha 'x)))))
+
 ;; `All` and `Array` are deftm's macro vocabulary, not vars — they are consumed
 ;; by the macro and must NOT be :refer'd.
-(deftm probe-scale (All [T] [alpha :- T, x :- T] :- T (rnum/* alpha x)))
-
 (def l1-arglist
   (hr/arglist-schema l1-overload {:lengths (hr/infer-lengths l1-overload)
                                   :max-len 8 :magnitude 100.0}))
@@ -103,15 +115,16 @@
            (mapv :tags (hr/overloads #'loss/mse-loss {:dtype :float}))))))
 
 (deftest dtype-monomorphization-mutates-the-shared-dispatch-table
-  (testing "a fresh (All [T]) deftm arrives with its double instantiation already
-           registered — nothing had to ask for it"
-    (is (= '[[double double]] (mapv :tags (hr/overloads #'probe-scale)))))
-  (testing "asking for :float REGISTERS it, so the next :dtype-less enumeration
-           is wider: `overloads` reports the table as it stands in this image,
-           not a property of the definition"
-    (is (= '[[float float]] (mapv :tags (hr/overloads #'probe-scale {:dtype :float}))))
-    (is (= #{'[double double] '[float float]}
-           (set (mapv :tags (hr/overloads #'probe-scale)))))))
+  (let [v (fresh-parametric-deftm!)]
+    (testing "a fresh (All [T]) deftm arrives with its double instantiation
+             already registered — nothing had to ask for it"
+      (is (= '[[double double]] (mapv :tags (hr/overloads v)))))
+    (testing "asking for :float REGISTERS it, so the next :dtype-less
+             enumeration of the SAME var is wider: `overloads` reports the table
+             as it stands in this image, not a property of the definition"
+      (is (= '[[float float]] (mapv :tags (hr/overloads v {:dtype :float}))))
+      (is (= #{'[double double] '[float float]}
+             (set (mapv :tags (hr/overloads v))))))))
 
 (deftest overloads-refuses-a-non-deftm-var
   (is (thrown-with-msg? clojure.lang.ExceptionInfo #"not a raster deftm var"
@@ -275,6 +288,23 @@
            the refusal is propagated rather than swallowed"
     (is (thrown-with-msg? clojure.lang.ExceptionInfo #"infer-lengths declined"
                           (hr/kernel-schema #'knn/l2-normalize! {:lengths :infer})))))
+
+(deftest overload-schemas-register-under-a-traceable-key
+  (let [[kin kout] (hr/register-overload! l1-overload
+                                          {:lengths (hr/infer-lengths l1-overload)
+                                           :max-len 6 :magnitude 100.0})]
+    (testing "the key carries the impl namespace AND the mangled tags, so two
+             instantiations of one deftm cannot collide"
+      (is (= :raster.dl.loss/l1-loss-backward_m_double_doubles_doubles_long.in kin))
+      (is (not= kin kout))
+      (is (not= (hr/overload-keys (first (hr/overloads #'loss/mse-loss {:dtype :double})))
+                (hr/overload-keys (first (hr/overloads #'loss/mse-loss {:dtype :float}))))))
+    (testing "and the registered key resolves, generates and validates — a
+             consumer reaches the schema by name instead of re-deriving it"
+      (is (some? (hss/schema kin)))
+      (is (some? (hss/schema kout)))
+      (is (every? #(hss/validate kin %)
+                  (gen/sample (mg/generator (hss/schema kin)) 20))))))
 
 ;; ---------------------------------------------------------------------------
 ;; Rung D: the Typed Clojure checker, and the pass that means nothing

@@ -23,7 +23,8 @@
             [malli.generator :as mg]
             [clojure.test.check.generators :as gen]
             [raster.core :as rc]
-            [raster.compiler.core.types :as rtypes]))
+            [raster.compiler.core.types :as rtypes]
+            [hive-schemas.schema :as hss]))
 
 ;; SPDX-License-Identifier: MIT
 ;; Copyright (C) 2026 Pedro Gomes Branquinho (BuddhiLW) <pedrogbranquinho@gmail.com>
@@ -364,6 +365,26 @@
                                             {:overload (:name ov) :params (:params ov)}))))
                  opts)]
       (overload-schema ov opts))))
+
+(defn overload-keys
+  "The registry keys `ov`'s schemas are registered under:
+   `:<impl-ns>/<mangled-name>.in` and `.out`. The mangled name carries the
+   overload's tags, so two instantiations of one deftm never collide."
+  [ov]
+  (let [ns-sym (ns-name (:ns (meta (:impl-var ov))))]
+    [(keyword (str ns-sym) (str (:name ov) ".in"))
+     (keyword (str ns-sym) (str (:name ov) ".out"))]))
+
+(defn register-overload!
+  "Register `ov`'s arglist and return schemas in the hive-spi schema registry
+   under `overload-keys`, so a consumer reaches them by key instead of
+   re-deriving them. Returns the two keys."
+  [ov opts]
+  (let [{:keys [in out]} (overload-schema ov opts)
+        [kin kout]       (overload-keys ov)]
+    (hss/register! kin in)
+    (hss/register! kout out)
+    [kin kout]))
 
 (defn approx-rel
   "A `:rel` for `hive-schemas.test/deftrifecta-from-schema` built from a pure
