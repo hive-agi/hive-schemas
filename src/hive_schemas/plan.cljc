@@ -20,7 +20,9 @@
      subject-symbol ns/fn | #'ns/fn | var -> the bare qualified symbol
      validate/explain  a Plan against :hive.schemas/plan"
   (:require [hive-schemas.subject :as subject]
-            [hive-spi.schema.registry :as reg]))
+            [hive-spi.schema.registry :as reg]
+            [hive-schemas.vocab :as vocab]
+            [malli.core :as m]))
 
 ;; SPDX-License-Identifier: MIT
 ;; Copyright (C) 2026 Pedro Gomes Branquinho (BuddhiLW) <pedrogbranquinho@gmail.com>
@@ -148,3 +150,19 @@
   "malli explanation for `p` against :hive.schemas/plan, or nil."
   [p]
   (reg/explain :hive.schemas/plan p))
+
+;; =============================================================================
+;; Contracts
+;; =============================================================================
+
+(m/=> opts->facets [:=> [:cat [:maybe vocab/Opts]] [:vector :keyword]])
+
+(m/=> plan [:=> [:cat [:or :symbol :keyword :string] vocab/SubjectRef [:maybe vocab/Opts]] [:map]])
+
+(m/=> plan->opts [:=> [:cat [:map]] [:map]])
+
+(m/=> facet-vars [:=> [:cat [:map]] [:vector :symbol]])
+
+(m/=> validate [:=> [:cat :any] :boolean])
+
+(m/=> explain [:=> [:cat :any] [:maybe [:map]]])

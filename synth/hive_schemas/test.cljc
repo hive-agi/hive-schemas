@@ -49,7 +49,8 @@
             [malli.generator :as mg]
             [hive-schemas.subject :as subject]
             [hive-schemas.strength :as strength]
-            [hive-schemas.plan :as plan])
+            [hive-schemas.plan :as plan]
+            [hive-schemas.vocab :as vocab])
   ;; Self-require macros so cljs consumers pull deftrifecta-from-schema /
   ;; -predicate via plain :require/:refer. The macros are pure codegen: the only
   ;; platform-specific symbols they emit are deftest / is (chosen via (:ns &env)
@@ -470,3 +471,34 @@
       (throw (ex-info "Not a :hive.schemas/plan"
                       {:error :test/invalid-plan :explanation (:errors problem)})))
     `(deftriad-from-schema ~(:plan/name p) ~(:plan/subject p) ~(plan/plan->opts p))))
+
+;; =============================================================================
+;; Contracts
+;; =============================================================================
+
+(m/=> input-gen [:=> [:cat vocab/SchemaRef] :any])
+
+(m/=> output-oracle [:=> [:cat vocab/SchemaRef] ifn?])
+
+(m/=> required-entries
+      [:=> [:cat vocab/SchemaRef] [:maybe [:sequential [:tuple :any vocab/SchemaRef]]]])
+
+(m/=> wrong-value-for [:=> [:cat vocab/SchemaRef] :any])
+
+(m/=> schema-mutants [:=> [:cat :any vocab/SchemaRef] [:sequential [:tuple :any :any]]])
+
+(m/=> schema-corruptions [:=> [:cat vocab/SchemaRef :any] [:sequential [:tuple :string :any]]])
+
+(m/=> seeded-cases [:=> [:cat vocab/SchemaRef :int :int] [:map-of :any :any]])
+
+(m/=> command-gen
+      [:function
+       [:=> [:cat vocab/SchemaRef] :any]
+       [:=> [:cat vocab/SchemaRef [:maybe vocab/Opts]] :any]])
+
+(m/=> model-step [:=> [:cat vocab/SchemaRef] ifn?])
+
+(m/=> contract-schema [:=> [:cat vocab/SchemaRef vocab/SchemaRef :any] vocab/SchemaRef])
+
+(m/=> contract-violation
+      [:=> [:cat vocab/SchemaRef vocab/SchemaRef :any :any] vocab/Violation])

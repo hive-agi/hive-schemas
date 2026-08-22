@@ -17,7 +17,8 @@
             [hive-spi.schema.typed :as typed]
             [malli.core :as m]
             [malli.generator :as mg]
-            [malli.instrument :as mi]))
+            [malli.instrument :as mi]
+            [hive-schemas.vocab :as vocab]))
 
 ;; SPDX-License-Identifier: MIT
 ;; Copyright (C) 2026 Pedro Gomes Branquinho (BuddhiLW) <pedrogbranquinho@gmail.com>
@@ -98,3 +99,24 @@
   `(clojure.test/deftest ~name
      (let [v# (check-violation ~opts)]
        (clojure.test/is (nil? v#) (str v#)))))
+
+;; =============================================================================
+;; Contracts
+;; =============================================================================
+
+(m/=> contract-form
+      [:function
+       [:=> [:cat vocab/SubjectRef vocab/SchemaRef] [:sequential :any]]
+       [:=> [:cat vocab/SubjectRef vocab/SchemaRef vocab/SchemaRef] [:sequential :any]]])
+
+(m/=> contracts [:=> [:cat] [:map-of :symbol :any]])
+
+(m/=> instrument!
+      [:function
+       [:=> [:cat] [:sequential :any]]
+       [:=> [:cat [:maybe vocab/Opts]] [:sequential :any]]])
+
+(m/=> unstrument!
+      [:function
+       [:=> [:cat] [:sequential :any]]
+       [:=> [:cat [:maybe vocab/Opts]] [:sequential :any]]])

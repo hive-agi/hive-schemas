@@ -15,7 +15,8 @@
      registry-strength -> {schema-key strength} over the hive registry"
   (:require [hive-spi.schema.registry :as reg]
             [hive-spi.schema.typed :as typed]
-            [malli.core :as m]))
+            [malli.core :as m]
+            [hive-schemas.vocab :as vocab]))
 
 ;; SPDX-License-Identifier: MIT
 ;; Copyright (C) 2026 Pedro Gomes Branquinho (BuddhiLW) <pedrogbranquinho@gmail.com>
@@ -100,3 +101,22 @@
   (into (sorted-map)
         (map (fn [k] [k (schema-strength k)]))
         (keys (reg/registered))))
+
+;; =============================================================================
+;; Contracts
+;; =============================================================================
+
+(m/=> rejection-rate [:=> [:cat vocab/SchemaRef] :double])
+
+(m/=> schema-strength
+      [:=> [:cat vocab/SchemaRef]
+       [:map [:samples :int] [:accepted :int] [:rejected :int]
+             [:rejection-rate :double] [:degenerate? :boolean]]])
+
+(m/=> degenerate? [:=> [:cat vocab/SchemaRef] :boolean])
+
+(m/=> input-vacuity [:=> [:cat vocab/SchemaRef] vocab/Violation])
+
+(m/=> type-degeneracy [:=> [:cat vocab/SchemaRef] vocab/Violation])
+
+(m/=> registry-strength [:=> [:cat] [:map-of :any [:map]]])

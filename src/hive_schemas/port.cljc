@@ -17,7 +17,9 @@
   (:require [clojure.test]
             [hive-schemas.stub :as stub]
             [hive-schemas.subject :as subject]
-            [hive-spi.schema.registry :as reg])
+            [hive-spi.schema.registry :as reg]
+            [hive-schemas.vocab :as vocab]
+            [malli.core :as m])
   #?(:cljs (:require-macros [hive-schemas.port])))
 
 ;; SPDX-License-Identifier: MIT
@@ -123,3 +125,17 @@
                 (~is-sym (empty? msgs#)
                          (str '~method " violated its port contract: "
                               (pr-str msgs#)))))))))
+
+;; =============================================================================
+;; Contracts
+;; =============================================================================
+
+(m/=> method-violations
+      [:function
+       [:=> [:cat :any :any [:map]] vocab/Violations]
+       [:=> [:cat :any :any [:map] [:maybe vocab/Opts]] vocab/Violations]])
+
+(m/=> port-violations
+      [:function
+       [:=> [:cat :any [:map] :any] [:map-of :symbol vocab/Violations]]
+       [:=> [:cat :any [:map] :any [:maybe vocab/Opts]] [:map-of :symbol vocab/Violations]]])

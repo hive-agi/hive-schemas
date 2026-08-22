@@ -15,7 +15,8 @@
             [hive-spi.schema.gen :as sgen]
             [hive-spi.schema.registry :as reg]
             [malli.core :as m]
-            [malli.transform :as mt])
+            [malli.transform :as mt]
+            [hive-schemas.vocab :as vocab])
   #?(:cljs (:require-macros [hive-schemas.wire])))
 
 ;; SPDX-License-Identifier: MIT
@@ -128,3 +129,24 @@
            [`(~deftest-sym ~(symbol (str name "-json-schema"))
                (let [v# (json-schema-violation ~?schema)]
                  (~is-sym (nil? v#) (str v#))))]))))
+
+;; =============================================================================
+;; Contracts
+;; =============================================================================
+
+(m/=> coercion-identity-violation
+      [:function
+       [:=> [:cat vocab/SchemaRef] vocab/Violation]
+       [:=> [:cat vocab/SchemaRef [:maybe vocab/Opts]] vocab/Violation]])
+
+(m/=> wire-roundtrip-violation
+      [:function
+       [:=> [:cat vocab/SchemaRef] vocab/Violation]
+       [:=> [:cat vocab/SchemaRef [:maybe vocab/Opts]] vocab/Violation]])
+
+(m/=> explain-total-violation
+      [:function
+       [:=> [:cat vocab/SchemaRef] vocab/Violation]
+       [:=> [:cat vocab/SchemaRef [:sequential :any]] vocab/Violation]])
+
+(m/=> json-schema-violation [:=> [:cat vocab/SchemaRef] vocab/Violation])

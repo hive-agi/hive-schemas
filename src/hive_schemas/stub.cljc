@@ -14,7 +14,9 @@
      trace->cases      calls -> {label {:in .. :out ..}}"
   (:require [hive-schemas.subject :as subject]
             [hive-spi.schema.gen :as sgen]
-            [hive-spi.schema.registry :as reg]))
+            [hive-spi.schema.registry :as reg]
+            [hive-schemas.vocab :as vocab]
+            [malli.core :as m]))
 
 ;; SPDX-License-Identifier: MIT
 ;; Copyright (C) 2026 Pedro Gomes Branquinho (BuddhiLW) <pedrogbranquinho@gmail.com>
@@ -136,3 +138,35 @@
                          {:seen (conj seen (:in c)) :acc (conj acc c)}))
                      {:seen #{} :acc []})
              :acc)))
+
+;; =============================================================================
+;; Contracts
+;; =============================================================================
+
+(m/=> stub
+      [:function
+       [:=> [:cat vocab/SchemaRef] :any]
+       [:=> [:cat vocab/SchemaRef [:maybe vocab/Opts]] :any]])
+
+(m/=> stub-seq
+      [:function
+       [:=> [:cat vocab/SchemaRef :int] [:sequential :any]]
+       [:=> [:cat vocab/SchemaRef :int [:maybe vocab/Opts]] [:sequential :any]]])
+
+(m/=> stub-fn
+      [:function
+       [:=> [:cat vocab/SchemaRef vocab/SchemaRef] :any]
+       [:=> [:cat vocab/SchemaRef vocab/SchemaRef [:maybe vocab/Opts]] :any]])
+
+(m/=> default-provider
+      [:function
+       [:=> [:cat [:map]] :any]
+       [:=> [:cat [:map] [:maybe vocab/Opts]] :any]])
+
+(m/=> spy [:=> [:cat :any [:maybe vocab/Opts]] :any])
+
+(m/=> calls [:=> [:cat :any] [:maybe [:sequential :any]]])
+
+(m/=> violations [:=> [:cat :any] [:sequential :any]])
+
+(m/=> trace->cases [:=> [:cat [:maybe [:sequential :any]]] [:map-of :keyword :any]])

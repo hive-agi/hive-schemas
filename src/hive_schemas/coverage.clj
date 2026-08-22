@@ -16,7 +16,8 @@
             [clojure.set :as set]
             [clojure.string :as str]
             [clojure.test]
-            [malli.core :as m]))
+            [malli.core :as m]
+            [hive-schemas.vocab :as vocab]))
 
 ;; SPDX-License-Identifier: MIT
 ;; Copyright (C) 2026 Pedro Gomes Branquinho (BuddhiLW) <pedrogbranquinho@gmail.com>
@@ -206,3 +207,29 @@
        (clojure.test/is (empty? failures#)
                         (str "contract coverage " (:ratio report#)
                              " over " (count (:universe report#)) " functions")))))
+
+;; =============================================================================
+;; Contracts
+;; =============================================================================
+
+(m/=> source-files
+      [:function
+       [:=> [:cat [:maybe [:sequential {:gen/schema [:sequential :string]} :any]]]
+        [:vector :any]]
+       [:=> [:cat [:maybe [:sequential {:gen/schema [:sequential :string]} :any]]
+                  [:maybe [:set :string]]]
+        [:vector :any]]])
+
+(m/=> file-defns
+      [:function
+       [:=> [:cat [:any {:gen/schema [:enum (io/file "hive-schemas-absent.clj")]}]]
+        [:map]]
+       [:=> [:cat [:any {:gen/schema [:enum (io/file "hive-schemas-absent.clj")]}]
+                  [:maybe vocab/Opts]]
+        [:map]]])
+
+(m/=> contracted [:=> [:cat] [:set :symbol]])
+
+(m/=> coverage [:=> [:cat [:maybe vocab/Opts]] [:map]])
+
+(m/=> coverage-failures [:=> [:cat [:maybe [:map]]] vocab/Violations])

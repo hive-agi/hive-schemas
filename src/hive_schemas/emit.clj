@@ -14,7 +14,9 @@
   (:require [clojure.java.io :as io]
             [clojure.pprint :as pprint]
             [clojure.string :as str]
-            [hive-schemas.plan :as plan]))
+            [hive-schemas.plan :as plan]
+            [hive-schemas.vocab :as vocab]
+            [malli.core :as m]))
 
 ;; SPDX-License-Identifier: MIT
 ;; Copyright (C) 2026 Pedro Gomes Branquinho (BuddhiLW) <pedrogbranquinho@gmail.com>
@@ -142,3 +144,24 @@
       (do (.mkdirs (.getParentFile file))
           (spit file (render-ns spec))
           {:ok path}))))
+
+;; =============================================================================
+;; Contracts
+;; =============================================================================
+
+(m/=> unprintable [:=> [:cat :any] [:vector :any]])
+
+(m/=> plan->form [:=> [:cat :any] [:sequential :any]])
+
+(m/=> plans->forms [:=> [:cat [:maybe [:sequential :any]]] [:vector :any]])
+
+(m/=> ns-form [:=> [:cat [:maybe [:map]]] [:sequential :any]])
+
+(m/=> render-ns [:=> [:cat [:maybe [:map]]] :string])
+
+(m/=> ns->path
+      [:function
+       [:=> [:cat :any] vocab/Path]
+       [:=> [:cat :any vocab/Path] vocab/Path]])
+
+(m/=> spit-ns! [:=> [:cat :any [:maybe [:map]]] [:map]])

@@ -304,7 +304,7 @@ Golden the registry to see contract drift in review:
 
 | alias         | source root | adds                                             |
 |---------------|-------------|--------------------------------------------------|
-| *(core)*      | `src/`      | registry + derivation levers, `plan`/`emit`, `coverage`, `wire`, `instrument`, `strength`, `stub`, `port`, `evolution` |
+| *(core)*      | `src/`      | registry + derivation levers, `vocab`, `plan`/`emit`, `coverage`, `wire`, `instrument`, `strength`, `stub`, `port`, `evolution` |
 | `:test-synth` | `synth/`    | the `hive-schemas.test` bridge (pulls `hive-test`) |
 | `:typed`      | `typed/`    | the rung-D `hive-schemas.typed-check` ns (pulls `typed.clj.checker`) |
 | `:ansatz`     | `ansatz/`   | the rung-E `hive-schemas.verified` / `proven` nses (pulls `ansatz`) |

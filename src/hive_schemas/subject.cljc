@@ -6,7 +6,8 @@
      applier          ?s -> (fn [subject in] ...)
      subject-symbol   ns/fn | #'ns/fn | var -> the bare qualified symbol"
   (:require [hive-spi.schema.registry :as reg]
-            [malli.core :as m]))
+            [malli.core :as m]
+            [hive-schemas.vocab :as vocab]))
 
 ;; SPDX-License-Identifier: MIT
 ;; Copyright (C) 2026 Pedro Gomes Branquinho (BuddhiLW) <pedrogbranquinho@gmail.com>
@@ -59,3 +60,13 @@
         :else
         (throw (ex-info "Not a subject: want ns/fn, #'ns/fn or a var"
                         {:error :subject/unrecognized :subject subject})))))
+
+;; =============================================================================
+;; Contracts
+;; =============================================================================
+
+(m/=> applier [:=> [:cat vocab/SchemaRef] fn?])
+
+(m/=> arglist-schema? [:=> [:cat vocab/SchemaRef] :boolean])
+
+(m/=> subject-symbol [:=> [:cat vocab/SubjectRef] :symbol])

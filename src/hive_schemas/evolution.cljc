@@ -14,7 +14,8 @@
             [hive-spi.schema.gen :as sgen]
             [hive-spi.schema.registry :as reg]
             [hive-spi.schema.typed :as typed]
-            [malli.core :as m])
+            [malli.core :as m]
+            [hive-schemas.vocab :as vocab])
   #?(:cljs (:require-macros [hive-schemas.evolution])))
 
 ;; SPDX-License-Identifier: MIT
@@ -96,3 +97,27 @@
        (let [broken# (breaking-changes ~old-snapshot ~new-snapshot ~opts)]
          (~is-sym (empty? broken#)
                   (str "breaking schema changes: " (pr-str broken#)))))))
+
+;; =============================================================================
+;; Contracts
+;; =============================================================================
+
+(m/=> registry-snapshot
+      [:function
+       [:=> [:cat] [:map-of :any [:map]]]
+       [:=> [:cat [:seqable {:gen/elements [[]]} :any]] [:map-of :any [:map]]]])
+
+(m/=> compat-violation
+      [:function
+       [:=> [:cat [vocab/SchemaRef {:gen/elements [:int :string :keyword [:map [:a :int]]]}]
+                  [vocab/SchemaRef {:gen/elements [:int :string :keyword [:map [:a :int]]]}]]
+        vocab/Violation]
+       [:=> [:cat [vocab/SchemaRef {:gen/elements [:int :string :keyword [:map [:a :int]]]}]
+                  [vocab/SchemaRef {:gen/elements [:int :string :keyword [:map [:a :int]]]}]
+                  [:maybe vocab/Opts]]
+        vocab/Violation]])
+
+(m/=> breaking-changes
+      [:function
+       [:=> [:cat [:maybe [:map]] [:maybe [:map]]] [:map-of :any :string]]
+       [:=> [:cat [:maybe [:map]] [:maybe [:map]] [:maybe vocab/Opts]] [:map-of :any :string]]])

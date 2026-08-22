@@ -11,7 +11,9 @@
    One macro:
      deftest-typed-check  name ns-sym -> a deftest asserting the ns checks clean"
   (:require [clojure.test]
-            [typed.clj.checker :as checker]))
+            [typed.clj.checker :as checker]
+            [hive-schemas.vocab :as vocab]
+            [malli.core :as m]))
 
 ;; SPDX-License-Identifier: MIT
 ;; Copyright (C) 2026 Pedro Gomes Branquinho (BuddhiLW) <pedrogbranquinho@gmail.com>
@@ -38,3 +40,11 @@
   `(clojure.test/deftest ~name
      (let [v# (check-violation ~ns-sym)]
        (clojure.test/is (nil? v#) (str v#)))))
+
+;; =============================================================================
+;; Contracts
+;; =============================================================================
+
+(m/=> type-errors [:=> [:cat :any] [:maybe [:sequential :any]]])
+
+(m/=> check-violation [:=> [:cat :any] vocab/Violation])
