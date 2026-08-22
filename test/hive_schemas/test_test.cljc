@@ -5,7 +5,8 @@
             [hive-schemas.test :as hst]
             [hive-spi.schema.registry :as reg]
             [hive-test.stateful :as sf]
-            [hive-test.trifecta :as tri]))
+            [hive-test.trifecta :as tri]
+            [malli.core :as m]))
 
 ;; --- a schematized subject (bounds keep the product within long range;
 ;;     malli bounds flow straight into the synthesized input generator) ---
@@ -236,3 +237,72 @@
         r       (sf/check machine {})]
     (is (false? (:ok? r)))
     (is (seq (:invariant-violations r)))))
+;; =============================================================================
+;; A schema carrying its OWN :registry
+;; =============================================================================
+;;
+;; A recursive schema is spelled `[:schema {:registry {::x ...}} ::x]`, so the
+;; ref that closes the loop resolves only against the schema's own registry —
+;; not the hive one, and not malli's default. Every lever here re-schemas what
+;; it is handed, so if any of them re-forms through a foreign registry, `::node`
+;; resolves to nil and the failure reads
+;;
+;;   No implementation of method: :-schema of protocol: #'malli.registry/Registry
+;;   found for class: nil
+;;
+;; which names neither the schema nor the lever. Filed from hive-system 2026-08-21
+;; as [HIVE-SCHEMAS-LOCAL-REGISTRY]; the suite had NO recursive schema at all, so
+;; nothing here would have caught a regression either way. These pin it.
+
+(def ^:private Node
+  "Self-referential: a node holds an int and any number of child nodes."
+  [:schema {:registry {::node [:map
+                               [:v [:int {:min 0 :max 100}]]
+                               [:kids {:optional true}
+                                [:vector {:max 2} [:ref ::node]]]]}}
+   ::node])
+
+(defn- node-sum [{:keys [v kids]}]
+  (reduce + v (map node-sum kids)))
+
+(deftest a-local-registry-survives-every-lever
+  (testing "the levers accept a schema whose refs only its own registry can resolve"
+    (is (some? (hst/input-gen Node))          "input-gen")
+    (is (some? (hst/output-oracle [:int]))    "output-oracle")
+    (is (some? (hst/applier Node))            "applier")
+    (is (false? (hst/arglist-schema? Node))   "arglist-schema? — a :schema is one value"))
+  (testing "and seeded-cases produces values that actually conform"
+    ;; seeded-cases returns {:case-n value}, so the VALUES are the cases.
+    (let [cases  (vals (hst/seeded-cases Node 0 4))
+          oracle (hst/output-oracle Node)]
+      (is (seq cases))
+      (is (every? oracle cases)
+          "a generated case must satisfy the very schema it was generated from"))))
+
+(deftest a-local-registry-survives-a-form-roundtrip
+  ;; The sharper case: anything that goes through `m/form` loses the compiled
+  ;; schema object and must rebuild from the form alone, local registry included.
+  (let [round-tripped (m/form (m/schema Node))]
+    (is (some? (hst/input-gen round-tripped)))
+    (is (some? (hst/applier round-tripped)))
+    (is (false? (hst/arglist-schema? round-tripped)))))
+
+(deftest the-recursive-schema-actually-recurses
+  ;; Negative control: if `::node` silently resolved to something trivial, the
+  ;; tests above would pass while proving nothing. Demand a nested value.
+  (let [cases (vals (hst/seeded-cases Node 7 60))]
+    (is (some (fn [c] (seq (:kids c))) cases)
+        "no generated case had children — the ref is not being followed")
+    (is (some (fn [c] (some (comp seq :kids) (:kids c))) cases)
+        "no case nested TWO deep — one level could come from a non-recursive schema")
+    (is (every? (fn [c] (<= (:v c) (node-sum c))) cases)
+        "the child sum is well-defined, so the nested values are real nodes")))
+
+;; The synthesized facets, over a subject whose :in carries a local registry.
+(hst/deftrifecta-from-schema node-sum-from-schema
+  hive-schemas.test-test/node-sum
+  {:in       Node
+   :out      [:int {:min 0}]
+   :rel      (fn [in out] (= out (node-sum in)))
+   :mutation false
+   :num-tests 50})
