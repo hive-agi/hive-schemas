@@ -103,12 +103,14 @@
   {:override-deps {io.github.hive-agi/hive-spi  {:local/root "../hive-spi"}
                    io.github.hive-agi/hive-test {:local/root "../hive-test"}}}
   ;; Rung-4/5 suite for the raster bridge: the malli <-> deftm projections
-  ;; checked against REAL raster kernels, plus the trifecta defkernel-trifecta
-  ;; synthesizes for one. Own test root + kaocha config, kept out of :test so
-  ;; the default lane stays raster-free (raster pulls typed.clj.checker and
-  ;; needs --enable-native-access).
+  ;; checked against REAL raster kernels, the trifecta defkernel-trifecta
+  ;; synthesizes for one, and the rung-D facet over a raster-typed namespace.
+  ;; Own test root + kaocha config, kept out of :test so the default lane stays
+  ;; raster-free (raster pulls typed.clj.checker and needs
+  ;; --enable-native-access). typed/ rides along because raster already brings
+  ;; typed.clj.checker transitively.
   :raster-test
-  {:extra-paths ["raster" "synth" "test/raster"]
+  {:extra-paths ["raster" "synth" "typed" "test/raster"]
    :extra-deps  {org.replikativ/raster {:mvn/version "0.2.318"}
                  io.github.hive-agi/hive-test {:mvn/version "0.3.14"}
                  lambdaisland/kaocha {:mvn/version "1.91.1392"}}

@@ -3,11 +3,21 @@
 
    Loads only when org.replikativ/raster is on the classpath (the :raster alias).
 
-   Levers:
-     overloads        deftm-var -> [{:impl-var :name :params :tags :ret} ...]
-     overload-schema  overload  -> {:in arglist-schema :out schema}
-     infer-lengths    overload  -> {length-param #{array-param ...}} | nil
-     approx= / approx-seq=      numeric :rel comparators"
+   Levers, forward:
+     overloads         deftm-var -> [{:impl-var :name :params :tags :ret} ...]
+     overload-schema   overload  -> {:in arglist-schema :out schema}
+     kernel-schema     deftm-var + opts -> the ONE selected overload's {:in :out}
+     infer-lengths     overload  -> {length-param #{array-param ...}} | nil
+   and reverse:
+     param-annotations    arglist schema -> [p :- Ann, ...]
+     overload-annotations the same, straight from an overload
+     return-annotation    an overload's `:- ` return annotation
+   plus:
+     approx= / approx-seq= / approx-rel   float comparators, and the :rel built
+                                          from a pure reference
+     element-types    the ONE table every projection above is derived from
+     tc-extensions    the checker extensions `hive-schemas.typed-check` has to
+                      :prepare before checking a raster-typed namespace"
   (:require [clojure.string :as str]
             [malli.core :as m]
             [malli.generator :as mg]
@@ -17,6 +27,13 @@
 
 ;; SPDX-License-Identifier: MIT
 ;; Copyright (C) 2026 Pedro Gomes Branquinho (BuddhiLW) <pedrogbranquinho@gmail.com>
+
+(def tc-extensions
+  "raster's Typed Clojure extensions. Pass as `hive-schemas.typed-check`'s
+   `:prepare` when checking a namespace whose types depend on raster's value
+   propagation or numeric promotion — they register by side effect at load time,
+   so a check that runs before them reports the stock checker's verdict."
+  'raster.compiler.core.tc-extensions)
 
 (def element-types
   "One row per raster element type — the single source every projection reads.

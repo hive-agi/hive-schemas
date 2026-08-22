@@ -13,6 +13,7 @@
             [malli.generator :as mg]
             [hive-schemas.raster :as hr]
             [hive-schemas.raster.synth :as hrs]
+            [hive-schemas.typed-check :as tc]
             [raster.dl.loss :as loss]
             [raster.knn :as knn]
             [raster.numeric :as rnum]
@@ -274,6 +275,28 @@
            the refusal is propagated rather than swallowed"
     (is (thrown-with-msg? clojure.lang.ExceptionInfo #"infer-lengths declined"
                           (hr/kernel-schema #'knn/l2-normalize! {:lengths :infer})))))
+
+;; ---------------------------------------------------------------------------
+;; Rung D: the Typed Clojure checker, and the pass that means nothing
+;; ---------------------------------------------------------------------------
+
+(deftest typed-check-refuses-a-namespace-the-checker-skipped
+  (testing "check-ns-info answers an EMPTY :type-errors for a namespace with no
+           ^:typed.clojure opt-in — byte-identical to a clean check"
+    (is (empty? (tc/type-errors 'hive-schemas.vocab))))
+  (testing "so an unchecked namespace has to be a violation, not a green row"
+    (is (re-find #"was NOT CHECKED" (tc/check-violation 'hive-schemas.vocab)))))
+
+(deftest the-tc-fixture-checks-clean-once-raster-extensions-are-prepared
+  (testing "(* 32 64) propagates to (t/Val 2048) with raster's checker
+           extensions loaded. Measured cold WITHOUT them, the same namespace
+           reports `Expected (t/Val 2048), Actual Long` — this suite has raster
+           loaded, which pulls tc-extensions transitively, so :prepare makes
+           explicit what would otherwise be accidental"
+    (is (nil? (tc/check-violation 'hive-schemas.raster-tc-fixture
+                                  {:prepare [hr/tc-extensions]}))))
+  (testing "and the fixture IS opted in, so that nil means checked-and-clean"
+    (is (true? (tc/opted-in? 'hive-schemas.raster-tc-fixture)))))
 
 ;; ---------------------------------------------------------------------------
 ;; The whole ladder, synthesized from the signature alone
