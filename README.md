@@ -79,6 +79,7 @@ symbol (or `#'ns/fn`).
 | `:num-tests`  | property iterations (default 100)                                 |
 | `:seed`       | seed for the deterministic mutation/golden cases (default 0)       |
 | `:n-cases`    | number of seeded cases (default 8)                               |
+| `:strict-in`  | fail when `:in` accepts everything (rung-A honesty; opt-in)        |
 
 ### Synthesized facets (each a distinct test var)
 
@@ -91,6 +92,7 @@ symbol (or `#'ns/fn`).
 | `<name>-mutants-present` | **fails loud** if `:out` yields no mutants *(when `:mutation`)*|
 | `<name>-mutations`       | every schema-derived mutant is caught      *(when `:mutation`)*|
 | `<name>-golden`          | outputs match the stored snapshot        *(when `:golden-path`)*|
+| `<name>-input-strength`  | `:in` is not vacuous                      *(when `:strict-in`)* |
 
 The **non-vacuity guard** (`<name>-mutants-present`) is deliberate: a mutation
 suite that generates zero mutants is silently vacuous, so the bridge fails
@@ -134,21 +136,41 @@ The macros are thin; the derivations are plain functions you can call directly:
 | `seeded-cases`         | a reproducible, sorted sample of inputs                    |
 | `contract-violation`   | `nil \| message` via `mg/check` (rung B)                   |
 
-## The verification ladder
+## Two axes, not one ladder
 
-The facets are rungs on a ladder of increasing rigor — each strictly stronger
-than the last:
+Evidence about a subject varies along **two independent axes**. Read a facet's
+position on both before reporting what it establishes.
 
-| rung  | facet                       | what it proves                                    |
+**Axis 1 — strength of the evidence about one function.** Each rung is strictly
+stronger than the last:
+
+| rung  | facet                       | what it establishes                               |
 |-------|-----------------------------|---------------------------------------------------|
-| **A** | conformance                 | the output *shape* holds (probabilistically)       |
-| **B** | `:contract`                 | a relation holds, in-malli via `mg/check`          |
+| **0** | `wire` / `instrument`       | the schema *runs* — coercion, round-trip, `m/=>`   |
+| **A** | conformance                 | the output *shape* holds (sampled)                 |
+| **B** | `:contract`                 | a relation holds, in-malli via `mg/check` (sampled)|
 | **C** | mutation + golden           | the suite is adequate (kills sound mutants); the behavior is characterized |
-| **D** | schema-as-type              | the schema *is* the type (derivation)              |
-| **E** | `:ansatz` differential      | the compiled runtime ≡ an independent kernel evaluator |
+| **D** | schema-as-type              | the schema *is* the type — checked by `:typed`     |
+| **E** | `:ansatz` differential      | the compiled runtime ≡ an independent kernel evaluator (sampled) |
+| **F** | `:ansatz` proof / `csimp`   | the property holds ∀ inputs, by construction       |
 
-Rungs A–C are pure malli/test.check and ship in the core + `:test-synth`
-modules. Rung E is opt-in (below).
+**Axis 2 — scope of the claim.** Orthogonal to rung; a claim can be strong and
+narrow, or weak and wide:
+
+| scope        | lever                                    | claims about              |
+|--------------|------------------------------------------|---------------------------|
+| one value    | `validate` / `explain`                   | a single datum            |
+| one function | `deftrifecta-from-schema`                | one subject               |
+| one **port** | `deftest-port-contract`                  | every adapter of a port   |
+| one namespace| `deftest-contract-coverage`              | that nothing is uncovered |
+| the registry | `deftest-schema-compat`                  | that no contract broke    |
+| over time    | `:model-check` (recife/TLC)              | a state machine's traces  |
+
+Rungs 0–C and every axis-2 lever are pure malli/test.check and ship in the core
++ `:test-synth` modules. Rungs D, E and F are opt-in modules (below).
+
+**Sampled is not proven.** Rungs A, B, E and the compatibility checker generate
+inputs; their messages say so. Only rung F quantifies over all inputs.
 
 ## Optional module — rung E (`hive-schemas.verified`)
 
@@ -163,7 +185,7 @@ against an independent evaluator of the same source.
 ```clojure
 ;; deps.edn — the :ansatz alias pulls the kernel
 :ansatz {:extra-paths ["src/ansatz"]
-         :extra-deps  {org.replikativ/ansatz {:mvn/version "0.2.75"}}}
+         :extra-deps  {org.replikativ/ansatz {:mvn/version "<latest-version>"}}}
 ```
 
 ```clojure
@@ -176,12 +198,115 @@ against an independent evaluator of the same source.
 Scope: Nat / Bool / (List Nat) arguments and results (ansatz differential v1).
 Map / keyword ops are opaque carriers in v1 — stay on the malli rungs for them.
 
+## Plans — the macro is a projection, not the entry point
+
+A **plan** is a value: subject, schemas, selected facets, provenance. Producers
+that are not a human — hive-domain's `:hive-schemas` facet, a contract inferred
+from traces — build plans, and the emitter renders them.
+
+```clojure
+(require '[hive-schemas.plan :as plan]
+         '[hive-schemas.emit :as emit])
+
+(def p (plan/plan 'calc-tests 'my.ns/calc
+                  {:in ::in :out ::out :rel 'my.ns/calc-rel :contract true}))
+
+(plan/facet-vars p)   ;; => [calc-tests-conformance calc-tests-relation ...]
+(emit/render-ns {:ns 'my.ns.generated-test :plans [p]})   ;; => source text
+(emit/spit-ns! "test" {:ns 'my.ns.generated-test :plans [p]})
+```
+
+`hive-schemas.test/deftriad-from-plan` expands a plan in place. `:plan/provenance`
+is `:declared` | `:inferred` | `:compiled`. `spit-ns!` refuses to overwrite unless
+asked; `plan->form` refuses a `:rel` that is a compiled fn rather than a symbol.
+
+## Contract coverage
+
+```clojure
+(require '[hive-schemas.coverage :refer [deftest-contract-coverage]])
+
+(deftest-contract-coverage every-fn-is-contracted
+  {:paths  ["src"]
+   :exempt {'my.ns/legacy-thing "pending the 0.4 rewrite"}})
+```
+
+The universe is read from the **files**, not from `m/function-schemas`. Four
+independent gates: the universe is non-empty; nothing was unreadable or failed to
+load; every uncontracted function is exempted; every exemption carries a prose
+reason and still applies.
+
+## Rung 0 — the wire boundary
+
+```clojure
+(require '[hive-schemas.wire :refer [deftrifecta-wire]]
+         '[hive-schemas.instrument :as inst])
+
+(deftrifecta-wire op-in ::my-op-in {:roundtrip true})
+
+(inst/instrument! {:ns 'my.ns})
+(inst/check-violation {:ns 'my.ns})   ;; => nil | message
+```
+
+`instrument!` alters var roots; after a `:reload-all` the wrappers are orphaned
+and a fresh JVM is required.
+
+## Stubs, spies, and port contracts
+
+```clojure
+(require '[hive-schemas.stub :as stub]
+         '[hive-schemas.port :refer [deftest-port-contract]])
+
+(stub/stub ::out)                       ;; a deterministic conformant value
+(stub/stub-fn ::in ::out)               ;; a fake that rejects bad input
+(def spied (stub/spy my.ns/f {:in ::in :out ::out}))
+(stub/violations spied)                 ;; calls whose ends did not conform
+(stub/trace->cases (stub/calls spied))  ;; => golden :cases from real traffic
+
+(deftest-port-contract datahike-store
+  {:port/methods {get-it {:in [:cat ::k] :out ::v}}}
+  (->DatahikeStore cfg))                ;; the adapter is INJECTED
+```
+
+`stub/default-provider` is the seam a structural stub (`hive-test.stub/defstub`)
+calls to fill a method with a schema-conformant value instead of nil.
+
+## Schema strength
+
+```clojure
+(require '[hive-schemas.strength :as strength])
+
+(strength/schema-strength ::in)   ;; => {:rejection-rate 0.87 :degenerate? false ...}
+(strength/input-vacuity :any)     ;; => "vacuous :in — ..."
+(strength/type-degeneracy [:fn even?])  ;; => "degenerate type projection — ..."
+```
+
+Measured against a fixed value ladder, so scores are comparable across schemas
+and stable across runs.
+
+## Schema evolution
+
+```clojure
+(require '[hive-schemas.evolution :as evo])
+
+(evo/compat-violation old new {:variance :input})   ;; inputs may WIDEN
+(evo/compat-violation old new {:variance :output})  ;; outputs may NARROW
+(evo/breaking-changes old-snapshot (evo/registry-snapshot) {})
+```
+
+Golden the registry to see contract drift in review:
+
+```clojure
+(hive-test.golden/deftest-golden-fn registry-snapshot
+  "test/golden/registry.edn" evo/registry-snapshot)
+```
+
 ## Modules & aliases
 
 | alias         | adds                                                          |
 |---------------|--------------------------------------------------------------|
-| *(core)*      | schema registry + derivation levers (`hive_schemas.schema`)   |
-| `:test-synth` | the `hive-schemas.test` bridge (pulls `hive-test`)            |
+| *(core)*      | registry + derivation levers, `plan`/`emit`, `coverage`, `wire`, `instrument`, `strength`, `stub`, `evolution` |
+| `:test-synth` | the `hive-schemas.test` bridge and `hive-schemas.port` (pulls `hive-test`) |
+| `:typed`      | the rung-D `hive-schemas.typed-check` ns (pulls `typed.clj.checker`) |
 | `:ansatz`     | the rung-E `hive-schemas.verified` ns (pulls `ansatz`)        |
 | `:local`      | dev: override `hive-spi`/`hive-test` with sibling working copies |
 

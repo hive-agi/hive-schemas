@@ -23,13 +23,17 @@
              (token-like name-node (symbol (str base suffix)))))
           suffixes)))
 
-(defn- base-suffixes [opts]
+(defn- base-suffixes
+  "Facet suffixes `opts` selects, in emission order. Mirrors
+   hive-schemas.plan/opts->facets: every selector reads TRUTHINESS, not presence."
+  [opts]
   (cond-> ["-conformance"]
-    (contains? opts :rel)          (conj "-relation")
-    (true? (:idempotent? opts))    (conj "-idempotent")
-    (contains? opts :contract)     (conj "-contract")
-    (not= false (:mutation opts))  (conj "-mutants-present" "-mutations")
-    (contains? opts :golden-path)  (conj "-golden")))
+    (:rel opts)                   (conj "-relation")
+    (true? (:idempotent? opts))   (conj "-idempotent")
+    (:contract opts)              (conj "-contract")
+    (not= false (:mutation opts)) (conj "-mutants-present" "-mutations")
+    (:golden-path opts)           (conj "-golden")
+    (:strict-in opts)             (conj "-input-strength")))
 
 (defn deftrifecta-from-schema
   "Register every statically selected facet emitted from the options map."
@@ -59,3 +63,34 @@
     {:node (do-node
             (conj (suffixed-defs name-node suffixes)
                   (do-node [subject-node opts-node])))}))
+
+(defn deftriad-from-plan
+  "Mark the plan form as used. The emitted var names come from the plan value,
+   which is only known at expansion, so none are registered."
+  [{:keys [node]}]
+  (let [[_ plan-node] (:children node)]
+    {:node (do-node [plan-node])}))
+
+(defn deftrifecta-wire
+  "Register the boundary facets the options map statically selects."
+  [{:keys [node]}]
+  (let [[_ name-node schema-node opts-node] (:children node)
+        opts     (opts-sexpr opts-node)
+        suffixes (cond-> ["-coercion-identity" "-explain-total"]
+                   (:roundtrip opts)             (conj "-wire-roundtrip")
+                   (not= false (:json-schema opts)) (conj "-json-schema"))]
+    {:node (do-node
+            (conj (suffixed-defs name-node suffixes)
+                  (do-node [schema-node opts-node])))}))
+
+(defn deftest-port-contract
+  "Register the non-vacuity facet plus one facet per method the literal spec
+   declares."
+  [{:keys [node]}]
+  (let [[_ name-node spec-node instance-node] (:children node)
+        spec     (opts-sexpr spec-node)
+        methods  (keys (:port/methods spec))
+        suffixes (into ["-methods-present"] (map #(str "-" (name %))) methods)]
+    {:node (do-node
+            (conj (suffixed-defs name-node suffixes)
+                  (do-node (remove nil? [spec-node instance-node]))))}))

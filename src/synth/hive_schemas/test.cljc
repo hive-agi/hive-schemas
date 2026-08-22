@@ -46,7 +46,10 @@
             [clojure.test.check.clojure-test :as tc]
             [clojure.test.check.properties :as prop]
             [malli.core :as m]
-            [malli.generator :as mg])
+            [malli.generator :as mg]
+            [hive-schemas.subject :as subject]
+            [hive-schemas.strength :as strength]
+            [hive-schemas.plan :as plan])
   ;; Self-require macros so cljs consumers pull deftrifecta-from-schema /
   ;; -predicate via plain :require/:refer. The macros are pure codegen: the only
   ;; platform-specific symbols they emit are deftest / is (chosen via (:ns &env)
@@ -74,32 +77,21 @@
   [?out-schema]
   (m/validator (reg/schema ?out-schema)))
 
-(defmulti schema-arity
-  "How a value generated from an `:in` schema reaches the subject:
-     :arglist — the generated value IS an argument list; `apply` it
-     :value   — the generated value is one argument; pass it directly
+(def schema-arity
+  "How a value generated from an `:in` schema reaches the subject. Defined in
+   `hive-schemas.subject`; extend with `defmethod`."
+  subject/schema-arity)
 
-   Dispatches on the malli schema type. OCP: a new arglist-shaped schema type
-   is a new defmethod."
-  (fn [?schema] (m/type (reg/schema ?schema))))
+(def arglist-schema?
+  "True when `?schema` describes an argument LIST rather than a single value.
+   Defined in `hive-schemas.subject`."
+  subject/arglist-schema?)
 
-(defmethod schema-arity :cat [_] :arglist)
-(defmethod schema-arity :catn [_] :arglist)
-(defmethod schema-arity :default [_] :value)
+(def applier
+  "(fn [subject in] ...) applying a generated `:in` value to `subject` according
+   to `schema-arity`. Defined in `hive-schemas.subject`."
+  subject/applier)
 
-(defn arglist-schema?
-  "True when `?schema` describes an ARGUMENT LIST rather than a single value —
-   the convention malli's own :=> uses for its arguments."
-  [?schema]
-  (= :arglist (schema-arity ?schema)))
-
-(defn applier
-  "(fn [subject in] ...) applying a generated `:in` value to `subject`
-   according to `schema-arity`."
-  [?in-schema]
-  (if (arglist-schema? ?in-schema)
-    (fn [f in] (apply f in))
-    (fn [f in] (f in))))
 
 (defn- deref-toward
   "Deref/descend `?schema` one level at a time to a fixpoint, toward a STRUCTURAL
@@ -341,7 +333,7 @@
      <name>-mutations       each schema-derived mutant is caught       [when :mutation]
      <name>-golden          snapshot of the seeded cases' outputs      [when :golden-path]"
   [name subject {:keys [in out rel idempotent? contract mutation golden-path
-                        num-tests seed n-cases]
+                        strict-in num-tests seed n-cases]
                  :or {mutation true num-tests 100 seed 0 n-cases 8}}]
   (let [subj        (subject-sym subject)
         gsym        (gensym "gen")
@@ -391,7 +383,11 @@
                ~golden-path
                (fn [] (into (sorted-map)
                             (map (fn [[label# in#]] [label# {:in in# :out (~asym ~subj in#)}]))
-                            ~csym)))]))))
+                            ~csym)))])
+       ~@(when strict-in
+           [`(~deftest-sym ~(symbol (str name "-input-strength"))
+               (let [v# (strength/input-vacuity ~in)]
+                 (~is-sym (nil? v#) (str v#))))]))))
 
 (defmacro deftrifecta-predicate
   "Synthesize positive + negative tests for a PREDICATE `subject` against a
@@ -461,3 +457,16 @@
                      (clojure.test/is (not= :fail (:status r#))
                                       (str "model-check refuted: " (pr-str (:details r#)))))
                    (clojure.test/is true "hive-recife absent — model-check skipped"))))]))))
+
+(defmacro deftriad-from-plan
+  "Synthesize the facets the verification plan `p-form` selects.
+
+   `p-form` must yield a `:hive.schemas/plan` at macro time — a literal map, or a
+   form producing one. Expands to `deftriad-from-schema` over the plan's name,
+   subject and options; a non-conforming plan throws `:test/invalid-plan`."
+  [p-form]
+  (let [p (eval p-form)]
+    (when-let [problem (plan/explain p)]
+      (throw (ex-info "Not a :hive.schemas/plan"
+                      {:error :test/invalid-plan :explanation (:errors problem)})))
+    `(deftriad-from-schema ~(:plan/name p) ~(:plan/subject p) ~(plan/plan->opts p))))

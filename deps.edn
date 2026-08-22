@@ -73,4 +73,6 @@
   ;; Drop :local to build/deploy/verify against the pinned Maven versions.
   :local
   {:override-deps {io.github.hive-agi/hive-spi  {:local/root "../hive-spi"}
-                   io.github.hive-agi/hive-test {:local/root "../hive-test"}}}}}
+                   io.github.hive-agi/hive-test {:local/root "../hive-test"}}}
+  :typed {:extra-paths ["src/typed"]
+            :extra-deps  {org.typedclojure/typed.clj.checker {:mvn/version "1.4.0"}}}}}
