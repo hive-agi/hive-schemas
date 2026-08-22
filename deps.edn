@@ -32,6 +32,22 @@
   {:extra-paths ["ansatz"]
    :extra-deps  {org.replikativ/ansatz {:mvn/version "0.2.84"}}}
 
+  ;; OPTIONAL submodule: raster bridge. hive-schemas.raster derives a malli
+  ;; schema from a raster `deftm` overload's signature, so a numeric kernel gets
+  ;; the synthesis ladder without a hand-written generator. Pulls raster (which
+  ;; pulls typed.clj.checker transitively — the same 1.4.0 the :typed alias
+  ;; pins). Core stays raster-free.
+  ;;
+  ;; raster is UPSTREAM (replikativ), not a hive lib: pinned by :mvn/version
+  ;; here, and a working copy is wired through an untracked local.deps.edn
+  ;; override (see :local-raster there) rather than a :local/root in this file.
+  :raster
+  {:extra-paths ["raster"]
+   :extra-deps  {org.replikativ/raster {:mvn/version "0.2.318"}}
+   :jvm-opts    ["--enable-native-access=ALL-UNNAMED"
+                 "--add-modules=jdk.incubator.vector"
+                 "-Xss8m"]}
+
   ;; OPTIONAL submodule: static-type facet (ladder rung D). hive-schemas.typed-check
   ;; runs the Typed Clojure checker over a namespace and reports its errors as a
   ;; test facet. Pulls typed.clj.checker. Core + test-synth stay checker-free.
