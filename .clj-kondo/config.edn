@@ -1,0 +1,3 @@
+;; The exported config in resources/ IS the config this repo lints itself with.
+;; No copy under .clj-kondo/imports/io.github.hive-agi/hive-schemas/ — see [[20260821212413-74f930de]].
+{:config-paths ["../resources/clj-kondo.exports/io.github.hive-agi/hive-schemas"]}
