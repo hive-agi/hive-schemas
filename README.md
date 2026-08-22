@@ -1,6 +1,13 @@
 # hive-schemas
 
+<!-- hive-badges -->
+
 [![Clojars Project](https://img.shields.io/clojars/v/io.github.hive-agi/hive-schemas.svg)](https://clojars.org/io.github.hive-agi/hive-schemas)
+[![cljdoc](https://cljdoc.org/badge/io.github.hive-agi/hive-schemas)](https://cljdoc.org/d/io.github.hive-agi/hive-schemas/CURRENT)
+[![release](https://github.com/hive-agi/hive-schemas/actions/workflows/release.yml/badge.svg)](https://github.com/hive-agi/hive-schemas/actions/workflows/release.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+
+<!-- /hive-badges -->
 
 **A [malli](https://github.com/metosin/malli) schema drives property, mutation,
 contract, characterization — and optionally differential — tests, with no
