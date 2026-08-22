@@ -19,3 +19,6 @@ target/
 # classpath refresh. Never track it: .clj-kondo/config.edn reads the export in
 # resources/ directly, which is the single source.
 .clj-kondo/imports/io.github.hive-agi/hive-schemas/
+
+# Machine-local dependency overrides — never public (deps.edn carries mvn coords only).
+local.deps.edn
