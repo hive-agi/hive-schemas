@@ -470,11 +470,16 @@
                   expands in the CONSUMER's ns, so THIS ns stays ansatz-free at
                   load: a :prove consumer adds the :ansatz alias and requires
                   hive-schemas.proven. JVM-only (omitted on cljs).
-     :model-check {:model-spec s}  a recife TLA+/TLC facet (orthogonal). recife is
-                  resolved LAZILY at run time (requiring-resolve, guarded — an
-                  absent ns THROWS, so the guard turns that into nil), so the
-                  facet SKIPS green when recife is absent and adds no load-time
-                  dep. JVM-only (a cljs consumer gets a trivial skip).
+     :model-check {:model-spec s :optional? bool}  a recife TLA+/TLC facet
+                  (orthogonal). recife is resolved LAZILY at run time
+                  (requiring-resolve, guarded — an absent ns THROWS, so the guard
+                  turns that into nil), adding no load-time dep. When the checker
+                  is UNREACHABLE — recife absent, or cljs, where the facet cannot
+                  run at all — the emitted test FAILS unless `:optional? true`
+                  says an unchecked facet is acceptable here. A green
+                  `<name>-model-check` in a project with no model checker reads
+                  as a held model in every report that counts it, which is why
+                  the skip has to be asked for.
    All other opts pass through to `deftrifecta-from-schema` unchanged. The proof
    and model-check facets are decoupled by construction (DIP): one registered
    schema shapes the malli facets AND the ansatz a/defn the proof reasons about."
@@ -488,16 +493,19 @@
                ~(symbol (str name "-proof"))
                :params ~(:params prove) :prop ~(:prop prove) :tactics ~(:tactics prove))])
        ~@(when model-check
-           [(if cljs?
-              `(cljs.test/deftest ~(symbol (str name "-model-check"))
-                 (cljs.test/is true "model-check is JVM-only — skipped on cljs"))
-              `(clojure.test/deftest ~(symbol (str name "-model-check"))
-                 (if-let [check!# (try (requiring-resolve 'hive-recife.core/check!)
-                                       (catch Throwable _# nil))]
-                   (let [r# (check!# ~(:model-spec model-check))]
-                     (clojure.test/is (not= :fail (:status r#))
-                                      (str "model-check refuted: " (pr-str (:details r#)))))
-                   (clojure.test/is true "hive-recife absent — model-check skipped"))))]))))
+           (let [optional? (boolean (:optional? model-check))]
+             [(if cljs?
+                `(cljs.test/deftest ~(symbol (str name "-model-check"))
+                   (cljs.test/is ~optional?
+                                 "model-check is JVM-only, so nothing was checked here. Pass :model-check {... :optional? true} to accept that on cljs."))
+                `(clojure.test/deftest ~(symbol (str name "-model-check"))
+                   (if-let [check!# (try (requiring-resolve 'hive-recife.core/check!)
+                                         (catch Throwable _# nil))]
+                     (let [r# (check!# ~(:model-spec model-check))]
+                       (clojure.test/is (not= :fail (:status r#))
+                                        (str "model-check refuted: " (pr-str (:details r#)))))
+                     (clojure.test/is ~optional?
+                                      "hive-recife is absent, so the model was NOT checked. Add the dependency, or pass :model-check {... :optional? true} to accept an unchecked facet."))))])))))
 
 (defmacro deftriad-from-plan
   "Synthesize the facets the verification plan `p-form` selects.

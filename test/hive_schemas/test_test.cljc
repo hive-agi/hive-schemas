@@ -76,17 +76,29 @@
 
 ;; --- triad-in-one: malli facets + optional proof/model-check legs, one entry ---
 ;; No :prove here (JVM-safe under plain :test): the malli facets run off the
-;; schema; the model-check facet SKIPs green because recife is absent.
+;; schema. :optional? true is what makes the model-check facet green without
+;; recife on the classpath — this suite is asserting that the facet is EMITTED,
+;; not that any model was checked.
 (hst/deftriad-from-schema triad-calc #'calc
   {:in ::in :out ::out :rel calc-rel
-   :model-check {:model-spec {:init-state {} :components #{}}}})
+   :model-check {:model-spec {:init-state {} :components #{}} :optional? true}})
 
 (deftest deftriad-composes-the-ladder
   (testing "the malli conformance + relation facets are emitted as real test vars"
     (is (some? #'triad-calc-conformance))
     (is (some? #'triad-calc-relation)))
-  (testing "the model-check facet is emitted and SKIPs green when recife is absent"
+  (testing "the model-check facet is emitted, and an absent recife is a SKIP only
+            because :optional? true asked for one"
     (is (some? #'triad-calc-model-check)))
+  (testing "without :optional? an unreachable checker FAILS rather than passing —
+            a green facet in a project with no model checker is false assurance"
+    (let [expand (fn [opts] (pr-str (macroexpand-1
+                                      `(hst/deftriad-from-schema mc# my.ns/f ~opts))))
+          spec   {:model-spec {:init-state {} :components #{}}}]
+      (is (re-find #"\(clojure\.test/is false" (expand {:in ::in :out ::out :model-check spec})))
+      (is (re-find #"\(clojure\.test/is true"
+                   (expand {:in ::in :out ::out
+                            :model-check (assoc spec :optional? true)})))))
   (testing "a :prove opt emits an ansatz PROOF facet (fully-qualified,
             consumer-resolved) — checked by expansion, so no kernel is needed"
     (let [form (macroexpand-1
