@@ -184,7 +184,7 @@ against an independent evaluator of the same source.
 
 ```clojure
 ;; deps.edn — the :ansatz alias pulls the kernel
-:ansatz {:extra-paths ["src/ansatz"]
+:ansatz {:extra-paths ["ansatz"]
          :extra-deps  {org.replikativ/ansatz {:mvn/version "<latest-version>"}}}
 ```
 
@@ -302,13 +302,16 @@ Golden the registry to see contract drift in review:
 
 ## Modules & aliases
 
-| alias         | adds                                                          |
-|---------------|--------------------------------------------------------------|
-| *(core)*      | registry + derivation levers, `plan`/`emit`, `coverage`, `wire`, `instrument`, `strength`, `stub`, `evolution` |
-| `:test-synth` | the `hive-schemas.test` bridge and `hive-schemas.port` (pulls `hive-test`) |
-| `:typed`      | the rung-D `hive-schemas.typed-check` ns (pulls `typed.clj.checker`) |
-| `:ansatz`     | the rung-E `hive-schemas.verified` ns (pulls `ansatz`)        |
-| `:local`      | dev: override `hive-spi`/`hive-test` with sibling working copies |
+| alias         | source root | adds                                             |
+|---------------|-------------|--------------------------------------------------|
+| *(core)*      | `src/`      | registry + derivation levers, `plan`/`emit`, `coverage`, `wire`, `instrument`, `strength`, `stub`, `port`, `evolution` |
+| `:test-synth` | `synth/`    | the `hive-schemas.test` bridge (pulls `hive-test`) |
+| `:typed`      | `typed/`    | the rung-D `hive-schemas.typed-check` ns (pulls `typed.clj.checker`) |
+| `:ansatz`     | `ansatz/`   | the rung-E `hive-schemas.verified` / `proven` nses (pulls `ansatz`) |
+| `:local`      | —           | dev: override `hive-spi`/`hive-test` with sibling working copies |
+
+Every root ships in the jar at the path its namespace resolves at; the heavy dep
+each optional layer needs is the consumer's to add. Core requires none of them.
 
 `:local` is for co-developing the sibling libraries without a
 `clojure -T:build install` round-trip; it composes with any alias, e.g.

@@ -8,6 +8,9 @@ on:
     branches: [main]
     paths:
       - 'src/**'
+      - 'synth/**'
+      - 'ansatz/**'
+      - 'typed/**'
       - 'resources/**'
       - 'deps.edn'
   workflow_dispatch:

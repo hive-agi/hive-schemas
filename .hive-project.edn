@@ -2,4 +2,4 @@
  :parent      "hive"
  :description "Malli-schema bridging home: unified schema levers (register/derive/generate/type) plus optional schema-driven artifact synthesis. First submodule: schema -> hive-test property/golden/mutation tests for free."
  :type        :library
- :kg-backend  :datahike :carto {:source-roots ["resources" "src" "src/ansatz" "src/synth" "src/typed" "test" "test-ansatz"]}}
+ :kg-backend  :datahike :carto {:source-roots ["resources" "src" "ansatz" "synth" "typed" "test" "test-ansatz"]}}

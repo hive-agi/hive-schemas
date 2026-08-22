@@ -13,11 +13,15 @@
   ;; Published on Clojars; transitively pulls hive-dsl (Result).
   io.github.hive-agi/hive-spi {:mvn/version "0.1.20"}}
 
+ ;; The optional layers live in SIBLING source roots (synth/ ansatz/ typed/),
+ ;; never nested under src/. A root inside another root is copied twice by the
+ ;; jar step — once at its own path and once under the outer root's prefix,
+ ;; where the namespace no longer resolves.
  :aliases
  {;; OPTIONAL submodule: schema -> hive-test test synthesis. Pulls hive-test
   ;; (the test-paradigm lib). Core stays test-lib-free.
   :test-synth
-  {:extra-paths ["src/synth"]
+  {:extra-paths ["synth"]
    :extra-deps  {io.github.hive-agi/hive-test {:mvn/version "0.3.14"}}}
 
   ;; OPTIONAL submodule: differential verification facet (ladder rung E).
@@ -25,28 +29,35 @@
   ;; vs Lean 4 CIC kernel whnf on generated inputs. Pulls ansatz (the kernel).
   ;; Scope: Nat/Bool/List Nat. Core + test-synth stay ansatz-free.
   :ansatz
-  {:extra-paths ["src/ansatz"]
+  {:extra-paths ["ansatz"]
    :extra-deps  {org.replikativ/ansatz {:mvn/version "0.2.84"}}}
+
+  ;; OPTIONAL submodule: static-type facet (ladder rung D). hive-schemas.typed-check
+  ;; runs the Typed Clojure checker over a namespace and reports its errors as a
+  ;; test facet. Pulls typed.clj.checker. Core + test-synth stay checker-free.
+  :typed
+  {:extra-paths ["typed"]
+   :extra-deps  {org.typedclojure/typed.clj.checker {:mvn/version "1.4.0"}}}
 
   ;; Rung-E PROOF suite: boots the ansatz kernel and runs the differential
   ;; facet against a real a/defn subject (test-ansatz/, its own kaocha config).
-  ;; Self-contained — pulls src/ansatz + the kernel + hive-test + kaocha. Kept
+  ;; Self-contained — pulls ansatz/ + the kernel + hive-test + kaocha. Kept
   ;; separate from :test so the pinned Maven build stays kernel-free.
   :ansatz-test
-  {:extra-paths ["src/ansatz" "src/synth" "test-ansatz"]
+  {:extra-paths ["ansatz" "synth" "test-ansatz"]
    :extra-deps  {org.replikativ/ansatz {:mvn/version "0.2.84"}
                  io.github.hive-agi/hive-test {:mvn/version "0.3.14"}
                  lambdaisland/kaocha {:mvn/version "1.91.1392"}}
    :main-opts   ["-m" "kaocha.runner" "--config-file" "tests.ansatz.edn"]}
 
   :test
-  {:extra-paths ["src/synth" "test"]
+  {:extra-paths ["synth" "test"]
    :extra-deps  {io.github.hive-agi/hive-test {:mvn/version "0.3.14"}
                  lambdaisland/kaocha {:mvn/version "1.91.1392"}}
    :main-opts   ["-m" "kaocha.runner"]}
 
   :nrepl
-  {:extra-paths ["src/synth" "dev" "test"]
+  {:extra-paths ["synth" "dev" "test"]
    :extra-deps  {io.github.hive-agi/hive-test {:mvn/version "0.3.14"}
                  nrepl/nrepl       {:mvn/version "1.7.0"}
                  cider/cider-nrepl {:mvn/version "0.62.2"}}
@@ -55,9 +66,8 @@
                  "--port" "7956"]}
 
   ;; Clojars publishing. version = the repo's VERSION file.
-  ;; Ships src + src/synth (facade + test-synth bridge). hive-test is an
-  ;; OPTIONAL dep the consumer adds for hive-schemas.test; ansatz for the
-  ;; rung-E verified ns (src/ansatz, not in the jar).
+  ;; Ships src + synth + ansatz + typed. Their heavy deps (hive-test, ansatz,
+  ;; typed.clj.checker) are OPTIONAL — the consumer adds whichever layer it uses.
   :build
   {:deps {io.github.hive-agi/hive-build {:mvn/version "0.1.10"}}
    :ns-default hive-build.api}
@@ -73,6 +83,4 @@
   ;; Drop :local to build/deploy/verify against the pinned Maven versions.
   :local
   {:override-deps {io.github.hive-agi/hive-spi  {:local/root "../hive-spi"}
-                   io.github.hive-agi/hive-test {:local/root "../hive-test"}}}
-  :typed {:extra-paths ["src/typed"]
-            :extra-deps  {org.typedclojure/typed.clj.checker {:mvn/version "1.4.0"}}}}}
+                   io.github.hive-agi/hive-test {:local/root "../hive-test"}}}}}
