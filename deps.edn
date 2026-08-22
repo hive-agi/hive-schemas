@@ -13,7 +13,8 @@
   ;; Published on Clojars; transitively pulls hive-dsl (Result).
   io.github.hive-agi/hive-spi {:mvn/version "0.1.20"}}
 
- ;; The optional layers live in SIBLING source roots (synth/ ansatz/ typed/),
+ ;; The optional layers live in SIBLING source roots (synth/ ansatz/ typed/
+ ;; raster/),
  ;; never nested under src/. A root inside another root is copied twice by the
  ;; jar step — once at its own path and once under the outer root's prefix,
  ;; where the namespace no longer resolves.
@@ -82,8 +83,9 @@
                  "--port" "7956"]}
 
   ;; Clojars publishing. version = the repo's VERSION file.
-  ;; Ships src + synth + ansatz + typed. Their heavy deps (hive-test, ansatz,
-  ;; typed.clj.checker) are OPTIONAL — the consumer adds whichever layer it uses.
+  ;; Ships every root version.edn :src-dirs names — src + synth + ansatz + typed
+  ;; + raster. Their heavy deps (hive-test, ansatz, typed.clj.checker, raster)
+  ;; are OPTIONAL — the consumer adds whichever layer it uses.
   :build
   {:deps {io.github.hive-agi/hive-build {:mvn/version "0.1.10"}}
    :ns-default hive-build.api}
@@ -99,4 +101,18 @@
   ;; Drop :local to build/deploy/verify against the pinned Maven versions.
   :local
   {:override-deps {io.github.hive-agi/hive-spi  {:local/root "../hive-spi"}
-                   io.github.hive-agi/hive-test {:local/root "../hive-test"}}}}}
+                   io.github.hive-agi/hive-test {:local/root "../hive-test"}}}
+  ;; Rung-4/5 suite for the raster bridge: the malli <-> deftm projections
+  ;; checked against REAL raster kernels, plus the trifecta defkernel-trifecta
+  ;; synthesizes for one. Own test root + kaocha config, kept out of :test so
+  ;; the default lane stays raster-free (raster pulls typed.clj.checker and
+  ;; needs --enable-native-access).
+  :raster-test
+  {:extra-paths ["raster" "synth" "test/raster"]
+   :extra-deps  {org.replikativ/raster {:mvn/version "0.2.318"}
+                 io.github.hive-agi/hive-test {:mvn/version "0.3.14"}
+                 lambdaisland/kaocha {:mvn/version "1.91.1392"}}
+   :jvm-opts    ["--enable-native-access=ALL-UNNAMED"
+                 "--add-modules=jdk.incubator.vector"
+                 "-Xss8m"]
+   :main-opts   ["-m" "kaocha.runner" "--config-file" "tests.raster.edn"]}}}

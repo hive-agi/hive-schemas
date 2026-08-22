@@ -18,17 +18,58 @@
 ;; SPDX-License-Identifier: MIT
 ;; Copyright (C) 2026 Pedro Gomes Branquinho (BuddhiLW) <pedrogbranquinho@gmail.com>
 
-(def scalar-tag->schema
-  "raster scalar tag -> malli schema."
-  '{double :double, float :double, long :int, int :int, boolean :boolean, void :nil})
+(def element-types
+  "One row per raster element type — the single source every projection reads.
+     :tag         scalar tag as it appears in a mangled deftm name
+     :schema      malli schema for a scalar of that tag
+     :annot       deftm signature annotation for a scalar, when one is spelled
+     :array-tag   array tag whose elements have this tag, when one exists
+     :array-annot deftm signature annotation for that array
+     :class       JVM class name of that array
+     :make        that array's constructor
+     :canonical?  true on the ONE row `:schema` maps back to"
+  [{:tag 'double :schema :double :annot 'Double :canonical? true
+    :array-tag 'doubles :array-annot '(Array double) :class "[D" :make double-array}
+   {:tag 'float :schema :double :annot 'Float
+    :array-tag 'floats :array-annot '(Array float) :class "[F" :make float-array}
+   {:tag 'long :schema :int :annot 'Long :canonical? true
+    :array-tag 'longs :array-annot '(Array long) :class "[J" :make long-array}
+   {:tag 'int :schema :int
+    :array-tag 'ints :array-annot '(Array int) :class "[I" :make int-array}
+   {:tag 'byte :schema :int :annot 'Byte
+    :array-tag 'bytes :array-annot '(Array byte) :class "[B" :make byte-array}
+   {:tag 'boolean :schema :boolean :annot 'Boolean :canonical? true}
+   {:tag 'void :schema :nil :annot 'Void :canonical? true}])
 
 (def array-tag->element
   "raster array tag -> {:elem malli-schema :class array-class-name :make ctor}."
-  {'doubles {:elem :double :class "[D" :make double-array}
-   'floats  {:elem :double :class "[F" :make float-array}
-   'longs   {:elem :int    :class "[J" :make long-array}
-   'ints    {:elem :int    :class "[I" :make int-array}
-   'bytes   {:elem :int    :class "[B" :make byte-array}})
+  (into {} (keep (fn [{:keys [array-tag schema class make]}]
+                   (when array-tag [array-tag {:elem schema :class class :make make}])))
+        element-types))
+
+(def scalar-tag->schema
+  "raster scalar tag -> malli schema."
+  (into {} (map (juxt :tag :schema)) element-types))
+
+(def tag->annotation
+  "raster tag, scalar or array -> the annotation a deftm signature spells it with.
+   `int` has no scalar annotation in raster and is absent as a scalar key."
+  (into {} (mapcat (fn [{:keys [tag annot array-tag array-annot]}]
+                     (cond-> []
+                       annot (conj [tag annot])
+                       (and array-tag array-annot) (conj [array-tag array-annot]))))
+        element-types))
+
+(def canonical-schema->tag
+  "malli schema -> the ONE raster scalar tag it maps back to."
+  (into {} (keep (fn [{:keys [canonical? schema tag]}] (when canonical? [schema tag])))
+        element-types))
+
+(def canonical-schema->array-tag
+  "malli element schema -> the ONE raster array tag it maps back to."
+  (into {} (keep (fn [{:keys [canonical? schema array-tag]}]
+                   (when (and canonical? array-tag) [schema array-tag])))
+        element-types))
 
 (defn array-tag?
   "True when `tag` names a raster array type."
@@ -45,17 +86,19 @@
 
 (defn scalar-schema
   "malli schema for a scalar parameter of `tag`. Bounded by `:magnitude`.
-   Throws for an unknown tag."
+   Carries `:raster/tag` so the reverse direction reads the tag back instead of
+   inferring it. Throws for an unknown tag."
   [tag {:keys [magnitude] :or {magnitude 1.0e6}}]
-  (case tag
-    (double float) [:double {:min (- magnitude) :max magnitude}]
-    (long int)     [:int {:min (- (long magnitude)) :max (long magnitude)}]
-    boolean        :boolean
-    void           :nil
-    (throw (ex-info (str "no malli schema for raster tag `" tag "`")
-                    {:tag tag
-                     :known (vec (concat (keys scalar-tag->schema)
-                                         (keys array-tag->element)))}))))
+  (let [props {:raster/tag tag}]
+    (case (or (get scalar-tag->schema tag)
+              (throw (ex-info (str "no malli schema for raster tag `" tag "`")
+                              {:tag tag
+                               :known (vec (concat (keys scalar-tag->schema)
+                                                   (keys array-tag->element)))})))
+      :double  [:double (assoc props :min (- magnitude) :max magnitude)]
+      :int     [:int (assoc props :min (- (long magnitude)) :max (long magnitude))]
+      :boolean [:boolean props]
+      :nil     [:nil props])))
 
 (defn array-gen
   "Generator producing a Java array of `tag` with exactly `len` elements."
@@ -65,11 +108,13 @@
 
 (defn array-schema
   "malli schema for an array parameter of `tag`: validates the Java array class,
-   generates arrays of up to `:max-len` elements."
-  [tag {:keys [max-len] :or {max-len 32} :as opts}]
+   generates arrays of `:min-len` to `:max-len` elements. Carries `:raster/tag`
+   so the reverse direction reads the tag back instead of inferring it."
+  [tag {:keys [min-len max-len] :or {min-len 0 max-len 32} :as opts}]
   (let [klass (array-class tag)]
-    [:fn {:error/message (str "must be a " tag " array")
-          :gen/gen (gen/bind (gen/choose 0 max-len) #(array-gen tag % opts))}
+    [:fn {:raster/tag tag
+          :error/message (str "must be a " tag " array")
+          :gen/gen (gen/bind (gen/choose min-len max-len) #(array-gen tag % opts))}
      #(instance? klass %)]))
 
 (defn deftm?
@@ -90,9 +135,14 @@
   "Every concrete overload of deftm var `v`, as
    `[{:impl-var :name :params :tags :ret} ...]`.
 
-   `opts` are `raster.core/resolve-deftm-var` opts; `{:dtype :double}` pins (and
-   monomorphizes) exactly one overload. Without `:dtype`, enumerates the whole
-   dispatch table. Throws when `v` is not a deftm var."
+   `opts` are `raster.core/resolve-deftm-var` opts; `{:dtype :double}` pins
+   exactly one overload. Without `:dtype`, enumerates the dispatch table AS IT
+   STANDS. Throws when `v` is not a deftm var.
+
+   `:dtype` MONOMORPHIZES, and that REGISTERS the instantiation in the var's
+   shared dispatch table — a later `:dtype`-less enumeration of the same var is
+   wider. Enumerating a parametric `(All [T])` deftm is a fact about the running
+   image, not about the definition."
   ([v] (overloads v nil))
   ([v opts]
    (let [mm (meta v)]
@@ -136,12 +186,12 @@
 (defn- coupled-generator
   "Generator for the whole argument vector: one length drawn per group in
    `lengths`, every array in that group built to exactly that length."
-  [ov lengths {:keys [max-len] :or {max-len 32} :as opts}]
+  [ov lengths {:keys [min-len max-len] :or {min-len 0 max-len 32} :as opts}]
   (let [{:keys [params tags]} ov
         len-params (vec (keys lengths))
         governed   (into {} (for [[lp arrs] lengths, a arrs] [a lp]))]
     (gen/bind
-     (apply gen/tuple (repeat (count len-params) (gen/choose 0 max-len)))
+     (apply gen/tuple (repeat (count len-params) (gen/choose min-len max-len)))
      (fn [lens]
        (let [len-of (zipmap len-params lens)]
          (apply gen/tuple
@@ -157,6 +207,7 @@
 
    opts:
      :lengths   {length-param #{array-param ...}} — REQUIRED when `coupled?`
+     :min-len   smallest generated array (default 0)
      :max-len   largest generated array (default 32)
      :magnitude bound on generated numbers (default 1e6)
 
@@ -209,6 +260,106 @@
    (let [a (seq a), b (seq b)]
      (and (= (count a) (count b))
           (every? true? (map #(approx= %1 %2 eps) a b))))))
+
+(defn- base-type
+  "malli type keyword of `schema`, properties stripped."
+  [schema]
+  (m/type (m/schema schema)))
+
+(defn schema->tag
+  "Canonical raster SCALAR tag for malli `schema`, or nil."
+  [schema]
+  (get canonical-schema->tag (base-type schema)))
+
+(defn schema->array-tag
+  "Canonical raster ARRAY tag for a malli sequential-of-scalar `schema`, or nil.
+   The `:fn` schema `array-schema` emits carries no element type and yields nil."
+  [schema]
+  (let [s (m/schema schema)]
+    (when (contains? #{:vector :sequential :set} (m/type s))
+      (get canonical-schema->array-tag (base-type (first (m/children s)))))))
+
+(defn schema->annotation
+  "The raster `:- ` annotation for malli `schema`, or nil when no raster type
+   corresponds.
+
+   A schema this namespace built carries `:raster/tag` and inverts EXACTLY.
+   A hand-written one is inverted by canonical inference, which is lossy:
+   `float` shares `:double` with `double` and `int` shares `:int` with `long`,
+   so the canonical row wins."
+  [schema]
+  (or (some-> (:raster/tag (m/properties (m/schema schema))) tag->annotation)
+      (some-> (schema->tag schema) tag->annotation)
+      (some-> (schema->array-tag schema) tag->annotation)))
+
+(defn param-annotations
+  "raster deftm parameter vector for a malli `:catn` arglist schema:
+   `[:catn [:x :double] [:xs [:vector :double]]]` -> `[x :- Double, xs :- (Array double)]`.
+   Throws for a non-`:catn` schema, and for an entry no raster type corresponds to."
+  [arglist]
+  (let [s (m/schema arglist)]
+    (when-not (= :catn (m/type s))
+      (throw (ex-info "param-annotations needs a :catn arglist schema"
+                      {:type (m/type s) :schema (m/form s)})))
+    (into []
+          (mapcat (fn [[k _props child]]
+                    (let [a (schema->annotation child)]
+                      (when-not a
+                        (throw (ex-info (str "no raster annotation for entry `" k "`")
+                                        {:entry k :schema (m/form child)})))
+                      [(symbol (name k)) :- a])))
+          (m/children s))))
+
+(defn overload-annotations
+  "raster deftm parameter vector reconstructed from `ov` directly:
+   `[dy :- Double, pred :- (Array double), target :- (Array double), n :- Long]`.
+   The projection `param-annotations` is checked against. Throws for a tag no
+   annotation spells."
+  [ov]
+  (vec (mapcat (fn [p t]
+                 (let [a (get tag->annotation t)]
+                   (when-not a
+                     (throw (ex-info (str "no deftm annotation for raster tag `" t "`")
+                                     {:tag t :overload (:name ov)})))
+                   [p :- a]))
+               (:params ov) (:tags ov))))
+
+(defn return-annotation
+  "raster `:- ` annotation for `ov`'s return type, or nil when none is spelled."
+  [ov]
+  (get tag->annotation (:ret ov)))
+
+(defn kernel-schema
+  "`{:in :out}` for the ONE overload of deftm var `v` that `opts` selects.
+
+   `:lengths :infer` resolves through `infer-lengths` and throws when it
+   declines. Throws unless `opts` selects exactly one overload."
+  [v opts]
+  (let [ovs (overloads v opts)]
+    (when-not (= 1 (count ovs))
+      (throw (ex-info (str "kernel-schema needs exactly one overload, got " (count ovs))
+                      {:var v :tags (mapv :tags ovs)})))
+    (let [ov   (first ovs)
+          opts (if (= :infer (:lengths opts))
+                 (assoc opts :lengths
+                        (or (infer-lengths ov)
+                            (throw (ex-info (str "infer-lengths declined overload `" (:name ov) "`")
+                                            {:overload (:name ov) :params (:params ov)}))))
+                 opts)]
+      (overload-schema ov opts))))
+
+(defn approx-rel
+  "A `:rel` for `hive-schemas.test/deftrifecta-from-schema` built from a pure
+   `reference`: `(fn [args out] ...)` asserting `out` matches
+   `(apply reference args)` under `approx=` for a scalar and `approx-seq=` for
+   a collection. opts: `:eps` (default 1e-9)."
+  ([reference] (approx-rel reference nil))
+  ([reference {:keys [eps] :or {eps 1.0e-9}}]
+   (fn [args out]
+     (let [expected (apply reference args)]
+       (if (number? expected)
+         (and (number? out) (approx= expected out eps))
+         (approx-seq= expected out eps))))))
 
 (m/=> array-tag? [:=> [:cat :any] :boolean])
 (m/=> deftm? [:=> [:cat :any] :boolean])

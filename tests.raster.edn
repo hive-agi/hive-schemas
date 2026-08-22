@@ -1,0 +1,7 @@
+#kaocha/v1
+;; Rung-4/5 raster-bridge suite — run via `-M:raster-test`. Its own test root
+;; (test/raster, added to the classpath only by that alias) so `-M:test` never
+;; resolves raster: typed.clj.checker, native access, the Vector API module.
+{:tests [{:id          :raster
+          :test-paths  ["test/raster"]
+          :ns-patterns ["-test$"]}]}

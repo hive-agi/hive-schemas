@@ -1,4 +1,8 @@
 #kaocha/v1
-{:tests [{:id :unit
-          :test-paths ["test"]
+;; The unit lane discovers by DIRECTORY, and test/ now holds a second root
+;; (test/raster, on the classpath only under -M:raster-test). Pointing the
+;; suite at test/hive_schemas keeps discovery inside the one package this lane
+;; can load — a bare ["test"] walks into test/raster and fails to require it.
+{:tests [{:id          :unit
+          :test-paths  ["test/hive_schemas"]
           :ns-patterns ["-test$"]}]}
