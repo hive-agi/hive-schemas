@@ -2,6 +2,39 @@
 
 Versions before 0.1.19 predate this file; consult `git log` for those.
 
+## 0.1.20
+
+### Added
+
+- **`hive-schemas.test/deftrifecta-from-multi`** — a contract path for
+  MULTIMETHODS. `fn?` is false for a multimethod (`MultiFn` implements `IFn`
+  but not `clojure.lang.Fn`) and malli's `:=>` validator demands `fn?`, so an
+  `m/=>` on a dispatch seam fails `malli.instrument/check` unconditionally,
+  whatever the behaviour. The macro takes the arglist schema as an ordinary
+  value and synthesizes seven facets:
+
+  | facet | asserts |
+  |---|---|
+  | `-is-a-dispatch-seam` | subject is a multimethod, `:args` is an arglist schema, and no `m/=>` is registered for it |
+  | `-vocabulary-is-closed` | `:dispatch` admits a non-empty closed set |
+  | `-covers-the-vocabulary` | every declared value has a method |
+  | `-has-no-default-method` | no `:default` catch-all (`:total?`, default true) |
+  | `-dispatch-stays-in-vocabulary` | every argument list `:args` admits dispatches inside the vocabulary |
+  | `-args-reach-the-vocabulary` | the seeded sample actually reaches every declared value |
+  | `-conformance` | output conforms (when `:out` is given) |
+
+  The vocabulary is read from `:dispatch`, never from the subject's own
+  `defmethod` table — a totality check whose universe is derived from the
+  methods it is checking passes by construction.
+
+- Runtime levers `multimethod?`, `dispatch-fn`, `dispatch-vocabulary` and
+  `undispatched`. `dispatch-vocabulary` answers `nil` for an OPEN schema
+  (`:keyword`, `:any`, an `:or` with an open branch) rather than an empty
+  vector, so a caller that gates on one fails loud instead of asserting
+  nothing.
+
+- A clj-kondo hook so consumers' linters see the generated vars.
+
 ## 0.1.19
 
 ### Breaking
