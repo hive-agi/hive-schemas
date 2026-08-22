@@ -14,8 +14,7 @@
   io.github.hive-agi/hive-spi {:mvn/version "0.1.20"}}
 
  ;; The optional layers live in SIBLING source roots (synth/ ansatz/ typed/
- ;; raster/),
- ;; never nested under src/. A root inside another root is copied twice by the
+ ;; raster/), never nested under src/. A root inside another is copied twice by the
  ;; jar step — once at its own path and once under the outer root's prefix,
  ;; where the namespace no longer resolves.
  :aliases
@@ -113,7 +112,8 @@
   {:extra-paths ["raster" "synth" "typed" "test/raster"]
    :extra-deps  {org.replikativ/raster {:mvn/version "0.2.318"}
                  io.github.hive-agi/hive-test {:mvn/version "0.3.14"}
-                 lambdaisland/kaocha {:mvn/version "1.91.1392"}}
+                 lambdaisland/kaocha {:mvn/version "1.91.1392"}
+                 com.dylibso.chicory/runtime {:mvn/version "1.5.1"}}
    :jvm-opts    ["--enable-native-access=ALL-UNNAMED"
                  "--add-modules=jdk.incubator.vector"
                  "-Xss8m"]
