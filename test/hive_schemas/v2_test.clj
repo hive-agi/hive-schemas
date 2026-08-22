@@ -121,6 +121,23 @@
         (is (= 'ns (ffirst forms)))
         (is (= 2 (count forms)))))))
 
+(deftest preamble-forms-land-between-the-ns-form-and-the-plans
+  (let [p       (plan/plan 'dbl-tests 'hive-schemas.v2-test/dbl {:in ::in :out ::out})
+        setup   '(install! the-spec)
+        rel-def '(def a-relation (relation-predicate the-spec :a/law))
+        spec    {:ns 'gen.dbl-test :plans [p] :preamble [setup rel-def]}
+        src     (emit/render-ns spec)
+        forms   (read-string (str "[" src "]"))]
+    (is (= src (emit/render-ns spec)) "a preamble stays deterministic")
+    (is (= 'ns (ffirst forms)) "the ns form still comes first")
+    (is (= [setup rel-def] (vec (rest (butlast forms))))
+        "preamble forms render in order, right after the ns form")
+    (is (= 'hive-schemas.test/deftriad-from-schema (first (last forms)))
+        "the plans still come last")
+    (testing "omitting :preamble renders exactly what it rendered before"
+      (is (= (emit/render-ns {:ns 'gen.dbl-test :plans [p]})
+             (emit/render-ns {:ns 'gen.dbl-test :plans [p] :preamble nil}))))))
+
 (deftest emit-refuses-what-cannot-be-rendered
   (testing "a compiled :rel is not source"
     (let [p (plan/plan 'bad 'a/b {:in ::in :out ::out :rel (fn [_ _] true)})]

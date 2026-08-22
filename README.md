@@ -214,6 +214,14 @@ from traces — build plans, and the emitter renders them.
 (plan/facet-vars p)   ;; => [calc-tests-conformance calc-tests-relation ...]
 (emit/render-ns {:ns 'my.ns.generated-test :plans [p]})   ;; => source text
 (emit/spit-ns! "test" {:ns 'my.ns.generated-test :plans [p]})
+
+;; :preamble forms render after the ns form and before the plans, for whatever
+;; setup a generated suite needs before its subjects resolve.
+(emit/render-ns {:ns       'my.ns.generated-test
+                 :requires '[[hive-domain.core :as domain]]
+                 :preamble '[(domain/install! spec)
+                             (def conserved (domain/relation-predicate spec :a/law))]
+                 :plans    [p]})
 ```
 
 `hive-schemas.test/deftriad-from-plan` expands a plan in place. `:plan/provenance`
