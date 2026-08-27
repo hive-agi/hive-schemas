@@ -11,7 +11,7 @@
 
   ;; hive-spi.schema.{registry,derive,gen,typed} — the single-source levers.
   ;; Published on Clojars; transitively pulls hive-dsl (Result).
-  io.github.hive-agi/hive-spi {:mvn/version "0.1.20"}}
+  io.github.hive-agi/hive-spi {:mvn/version "0.2.0"}}
 
  ;; The optional layers live in SIBLING source roots (synth/ ansatz/ typed/
  ;; raster/), never nested under src/. A root inside another is copied twice by the
@@ -22,7 +22,7 @@
   ;; (the test-paradigm lib). Core stays test-lib-free.
   :test-synth
   {:extra-paths ["synth"]
-   :extra-deps  {io.github.hive-agi/hive-test {:mvn/version "0.3.14"}}}
+   :extra-deps  {io.github.hive-agi/hive-test {:mvn/version "0.3.15"}}}
 
   ;; OPTIONAL submodule: differential verification facet (ladder rung E).
   ;; hive-schemas.verified wraps ansatz.malli/check-verified! — compiled runtime
@@ -62,19 +62,19 @@
   :ansatz-test
   {:extra-paths ["ansatz" "synth" "test-ansatz"]
    :extra-deps  {org.replikativ/ansatz {:mvn/version "0.2.84"}
-                 io.github.hive-agi/hive-test {:mvn/version "0.3.14"}
+                 io.github.hive-agi/hive-test {:mvn/version "0.3.15"}
                  lambdaisland/kaocha {:mvn/version "1.91.1392"}}
    :main-opts   ["-m" "kaocha.runner" "--config-file" "tests.ansatz.edn"]}
 
   :test
   {:extra-paths ["synth" "test"]
-   :extra-deps  {io.github.hive-agi/hive-test {:mvn/version "0.3.14"}
+   :extra-deps  {io.github.hive-agi/hive-test {:mvn/version "0.3.15"}
                  lambdaisland/kaocha {:mvn/version "1.91.1392"}}
    :main-opts   ["-m" "kaocha.runner"]}
 
   :nrepl
   {:extra-paths ["synth" "dev" "test"]
-   :extra-deps  {io.github.hive-agi/hive-test {:mvn/version "0.3.14"}
+   :extra-deps  {io.github.hive-agi/hive-test {:mvn/version "0.3.15"}
                  nrepl/nrepl       {:mvn/version "1.7.0"}
                  cider/cider-nrepl {:mvn/version "0.62.2"}}
    :main-opts   ["-m" "nrepl.cmdline"
@@ -111,7 +111,7 @@
   :raster-test
   {:extra-paths ["raster" "synth" "typed" "test/raster"]
    :extra-deps  {org.replikativ/raster {:mvn/version "0.2.318"}
-                 io.github.hive-agi/hive-test {:mvn/version "0.3.14"}
+                 io.github.hive-agi/hive-test {:mvn/version "0.3.15"}
                  lambdaisland/kaocha {:mvn/version "1.91.1392"}
                  com.dylibso.chicory/runtime {:mvn/version "1.5.1"}}
    :jvm-opts    ["--enable-native-access=ALL-UNNAMED"
