@@ -43,7 +43,10 @@
      multimethod?      x -> true when x is a multimethod (fn? is false for one)
      dispatch-fn       multi -> its dispatch function
      dispatch-vocabulary ?s -> [v ...] | nil when the schema is OPEN
-     undispatched      multi vocabulary -> declared values with no method"
+     undispatched      multi vocabulary -> declared values with no method
+     classification-frequencies ?in subject classify n -> {variant count} over
+                                n generated inputs; judged by
+                                strength/classification-starvation"
   (:require [hive-spi.schema.registry :as reg]
             [hive-spi.schema.gen :as sgen]
             [hive-test.mutation :as mut]
@@ -60,7 +63,8 @@
             [hive-schemas.subject :as subject]
             [hive-schemas.strength :as strength]
             [hive-schemas.plan :as plan]
-            [hive-schemas.vocab :as vocab])
+            [hive-schemas.vocab :as vocab]
+            [clojure.test.check.generators :as gen])
   ;; Self-require macros so cljs consumers pull deftrifecta-from-schema /
   ;; -predicate / -from-multi via plain :require/:refer. The macros are pure
   ;; codegen: the only platform-specific symbols they emit are deftest / is
@@ -338,6 +342,18 @@
           ret (get chk :malli.core/result)]
       (str "contract violated — input " (pr-str in) " -> " (pr-str ret)))))
 
+(defn classification-frequencies
+  "variant -> count over `n` inputs generated from `?in`.
+
+   `classify` is (fn [in out] variant); the subject is applied through
+   `applier`, so an arglist `?in` is applied rather than passed. Feeds
+   `strength/classification-starvation`."
+  [?in subject classify n]
+  (let [apply-fn (applier ?in)]
+    (frequencies
+     (map (fn [in] (classify in (apply-fn subject in)))
+          (gen/sample (input-gen ?in) n)))))
+
 
 ;; =============================================================================
 ;; Multimethod dispatch seams
@@ -420,9 +436,22 @@
      :mutation    emit the mutation facet + non-vacuity guard     (default true)
      :golden-path relative EDN path — snapshot {case -> {:in :out}} over the
                   seeded cases and characterize it (opt-in)       [optional]
+     :strict-in   emit the SCHEMA-strength vacuity facet: :in must reject
+                  something on the universe ladder                [optional]
+     :classify    (fn [in out] variant) — emit the DISTRIBUTION vacuity facet:
+                  every variant must actually be REACHED          [optional]
+     :classify-domain a schema or set naming every variant   [required with
+                  :classify]. A schema's variants are read off `m/children`,
+                  so adding one DEMANDS coverage rather than diluting.
+     :classify-floor  minimum count per variant   (default: :num-tests / 4n)
      :num-tests   property iterations                            (default 100)
      :seed        mutation input seed                            (default 0)
      :n-cases     mutation input cases                           (default 8)
+
+   The two vacuity facets are orthogonal. :strict-in asks whether the :in
+   schema CONSTRAINS; :classify asks whether the generated inputs REACH every
+   branch. An :in can pass the ladder and still leave branches untested when
+   they are gated on a RELATIONSHIP between independently-generated values.
 
    Facets emitted (each a distinct var):
      <name>-conformance     for all in ~ :in, output conforms to :out
@@ -431,10 +460,18 @@
      <name>-contract        mg/check of the [:=> in out :fn-of-rel] schema [when :contract]
      <name>-mutants-present FAILS LOUD if :out yields no mutants       [when :mutation]
      <name>-mutations       each schema-derived mutant is caught       [when :mutation]
-     <name>-golden          snapshot of the seeded cases' outputs      [when :golden-path]"
+     <name>-golden          snapshot of the seeded cases' outputs      [when :golden-path]
+     <name>-input-strength  :in rejects something on the ladder        [when :strict-in]
+     <name>-classification-coverage every variant is reached           [when :classify]"
   [name subject {:keys [in out rel idempotent? contract mutation golden-path
-                        strict-in num-tests seed n-cases]
+                        strict-in classify classify-domain classify-floor
+                        num-tests seed n-cases]
                  :or {mutation true num-tests 100 seed 0 n-cases 8}}]
+  (when (and classify (nil? classify-domain))
+    (throw (ex-info (str ":classify requires :classify-domain — without the variant "
+                         "list the facet cannot tell a starved branch from one that "
+                         "was never declared, which is the vacuity it exists to catch")
+                    {:name name :subject subject})))
   (let [subj        (subject-sym subject)
         gsym        (gensym "gen")
         psym        (gensym "oracle")
@@ -487,6 +524,15 @@
        ~@(when strict-in
            [`(~deftest-sym ~(symbol (str name "-input-strength"))
                (let [v# (strength/input-vacuity ~in)]
+                 (~is-sym (nil? v#) (str v#))))])
+       ~@(when classify
+           [`(~deftest-sym ~(symbol (str name "-classification-coverage"))
+               (let [freqs# (classification-frequencies ~in ~subj ~classify ~num-tests)
+                     floor# ~(or classify-floor
+                                 `(strength/default-classification-floor
+                                   ~num-tests
+                                   (count (strength/classification-domain ~classify-domain))))
+                     v#     (strength/classification-starvation freqs# ~classify-domain floor#)]
                  (~is-sym (nil? v#) (str v#))))]))))
 
 (defmacro deftrifecta-predicate
@@ -702,6 +748,9 @@
 
 (m/=> contract-violation
       [:=> [:cat vocab/SchemaRef vocab/SchemaRef :any :any] vocab/Violation])
+
+(m/=> classification-frequencies
+      [:=> [:cat vocab/SchemaRef :any :any :int] [:map-of :any :int]])
 
 (m/=> multimethod? [:=> [:cat :any] :boolean])
 

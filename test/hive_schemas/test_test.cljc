@@ -6,7 +6,8 @@
             [hive-spi.schema.registry :as reg]
             [hive-test.stateful :as sf]
             [hive-test.trifecta :as tri]
-            [malli.core :as m]))
+            [malli.core :as m]
+            [hive-schemas.strength :as strength]))
 
 ;; --- a schematized subject (bounds keep the product within long range;
 ;;     malli bounds flow straight into the synthesized input generator) ---
@@ -341,6 +342,83 @@
         "no case nested TWO deep — one level could come from a non-recursive schema")
     (is (every? (fn [c] (<= (:v c) (node-sum c))) cases)
         "the child sum is well-defined, so the nested values are real nodes")))
+
+(defn tagged
+  "Reference subject for the classification facet. `:sentinel` is reachable in
+   principle and UNREACHABLE from an :int generator — which is the whole point:
+   the branch exists, conformance is green, and nothing says it is untested."
+  [x]
+  (if (= x ::never) :sentinel :ordinary))
+
+(deftest classification-starvation-is-a-real-floor-not-pos?
+  (testing "one accidental collision is not coverage"
+    (is (some? (strength/classification-starvation
+                {:same 1 :less 100 :greater 99} [:enum :same :less :greater] 20)))
+    (is (nil? (strength/classification-starvation
+               {:same 20 :less 100 :greater 99} [:enum :same :less :greater] 20))))
+  (testing "the message names the starved variant and the observed frequencies"
+    (let [v (strength/classification-starvation
+             {:same 1 :less 100 :greater 99} [:enum :same :less :greater] 20)]
+      (is (re-find #":same" v))
+      (is (re-find #"1 of 3" v)))))
+
+(deftest the-domain-comes-off-the-schema-so-a-new-variant-demands-coverage
+  (testing "variants are read off m/children, not restated"
+    (is (= [:same :less :greater]
+           (strength/classification-domain [:enum :same :less :greater]))))
+  (testing "a set domain is taken verbatim"
+    (is (= #{:a :b} (set (strength/classification-domain #{:a :b})))))
+  (testing "and widening the SCHEMA starves the very same run — that is the
+            difference between reading the domain and restating it"
+    (let [freqs {:same 20 :less 20 :greater 20}]
+      (is (nil?  (strength/classification-starvation freqs [:enum :same :less :greater] 20)))
+      (is (some? (strength/classification-starvation
+                  freqs [:enum :same :less :greater :incomparable] 20))))))
+
+(deftest the-default-floor-is-a-quarter-of-an-even-split
+  (is (= 25 (strength/default-classification-floor 300 3)))
+  (is (= 8  (strength/default-classification-floor 100 3)))
+  (testing "and never zero — a zero floor is pos?, which is what this rejects"
+    (is (= 1 (strength/default-classification-floor 4 3)))
+    (is (= 1 (strength/default-classification-floor 0 0)))))
+
+(deftest classification-frequencies-drives-the-real-generator
+  (testing "an :int generator never produces ::never, so :sentinel is starved"
+    (let [freqs (hst/classification-frequencies :int tagged (fn [_ out] out) 50)]
+      (is (= {:ordinary 50} freqs))
+      (is (some? (strength/classification-starvation freqs [:enum :ordinary :sentinel] 5)))
+      (is (nil?  (strength/classification-starvation freqs [:enum :ordinary] 5)))))
+  (testing "the OTHER vacuity axis is silent about this — :int is not degenerate,
+            so :strict-in would pass while a whole branch goes untested"
+    (is (nil? (strength/input-vacuity :int)))))
+
+(deftest classify-without-a-domain-refuses-at-macroexpansion
+  #?(:clj
+     (testing "without the variant list the facet cannot tell a starved branch
+               from an undeclared one — the vacuity it exists to catch. The
+               refusal is a macro-syntax-check, so the compiler WRAPS it and
+               only the root cause carries the reason"
+       (let [e   (try (macroexpand-1
+                       '(hive-schemas.test/deftrifecta-from-schema
+                         probe hive-schemas.test-test/tagged
+                         {:in :int :out :any :classify (fn [_ o] o)}))
+                      nil
+                      (catch Throwable t t))
+             msg (loop [t e]
+                   (if-let [c (and t (ex-cause t))] (recur c) (some-> t ex-message)))]
+         (is (some? e)
+             "the macro must REFUSE, not synthesize a facet it cannot judge")
+         (is (re-find #"requires :classify-domain" (or msg "")))))))
+
+(hst/deftrifecta-from-schema tagged-tests
+  hive-schemas.test-test/tagged
+  {:in              :int
+   :out             [:enum :ordinary :sentinel]
+   :classify        (fn [_ out] out)
+   :classify-domain [:enum :ordinary]
+   :classify-floor  5
+   :mutation        false
+   :num-tests       50})
 
 ;; The synthesized facets, over a subject whose :in carries a local registry.
 (hst/deftrifecta-from-schema node-sum-from-schema

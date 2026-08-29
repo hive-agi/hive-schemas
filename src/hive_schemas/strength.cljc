@@ -1,8 +1,12 @@
 (ns hive-schemas.strength
-  "How much a schema CONSTRAINS.
+  "How much a schema CONSTRAINS, and whether a property actually REACHES what
+   it claims to cover.
 
-   Measured against a fixed value ladder, so scores are deterministic and
-   comparable across schemas and runs.
+   Two orthogonal axes of vacuity. Schema strength is measured against a fixed
+   value ladder, so scores are deterministic and comparable across schemas and
+   runs. Classification coverage is measured against an observed frequency map,
+   because whether a branch is reached is a fact about the GENERATOR, not about
+   the schema.
 
    Levers:
      universe          the value ladder strength is measured against
@@ -12,7 +16,12 @@
      degenerate?       ?s -> true when the schema rejects nothing
      input-vacuity     ?in -> nil | message
      type-degeneracy   ?s  -> nil | message
-     registry-strength -> {schema-key strength} over the hive registry"
+     registry-strength -> {schema-key strength} over the hive registry
+
+     classification-domain       ?domain -> [variant ...] (m/children, or a set
+                                 taken verbatim)
+     default-classification-floor n-samples n-variants -> int
+     classification-starvation   freqs ?domain floor -> nil | message"
   (:require [hive-spi.schema.registry :as reg]
             [hive-spi.schema.typed :as typed]
             [malli.core :as m]
@@ -84,6 +93,49 @@
            "(rejection-rate " rejection-rate "); the generated inputs constrain "
            "nothing. Tighten :in, or drop :strict-in."))))
 
+(defn classification-domain
+  "The variants `?domain` names, as a vector.
+
+   A SET is taken verbatim. Anything else is read as a schema and its variants
+   are its `m/children`, so adding a variant to the schema DEMANDS coverage
+   instead of silently diluting the property."
+  [?domain]
+  (if (set? ?domain)
+    (vec ?domain)
+    (vec (m/children (reg/schema ?domain)))))
+
+(defn default-classification-floor
+  "Minimum times each of `n-variants` must be reached across `n-samples`: a
+   quarter of an even split, never below 1."
+  [n-samples n-variants]
+  (max 1 (quot n-samples (* 4 (max 1 n-variants)))))
+
+(defn classification-starvation
+  "nil when every variant of `?domain` appears at least `floor` times in
+   `freqs`; else a message naming the starved variants and the observed
+   frequencies.
+
+   `freqs` is variant -> count over a sample of classified outputs. The floor
+   is a real floor, not `pos?` — one accidental collision is not coverage.
+
+   This is the DISTRIBUTION axis of vacuity, orthogonal to `input-vacuity`:
+   an `:in` can score full strength on the universe ladder and still never
+   generate the input RELATIONSHIP a branch is gated on."
+  [freqs ?domain floor]
+  (let [variants (classification-domain ?domain)
+        starved  (->> variants
+                      (keep (fn [v] (let [c (get freqs v 0)]
+                                      (when (< c floor) [v c]))))
+                      (sort-by (comp str first))
+                      vec)]
+    (when (seq starved)
+      (str "starved classification — " (count starved) " of " (count variants)
+           " variant(s) reached fewer than " floor " time(s): " (pr-str starved)
+           ". Observed " (pr-str (vec (sort-by (comp str first) freqs)))
+           ". The generated inputs never exercise those branches, so the property"
+           " is SILENT about them. Correlate the generator (:gen/schema +"
+           " :gen/fmap on :in), or lower :classify-floor.")))) 
+
 (defn type-degeneracy
   "nil when `?schema`'s Typed Clojure projection carries information; else a
    message. `hive-spi.schema.typed` maps `:fn`, unknown nodes and unresolvable
@@ -116,6 +168,13 @@
 (m/=> degenerate? [:=> [:cat vocab/SchemaRef] :boolean])
 
 (m/=> input-vacuity [:=> [:cat vocab/SchemaRef] vocab/Violation])
+
+(m/=> classification-domain [:=> [:cat :any] [:vector :any]])
+
+(m/=> default-classification-floor [:=> [:cat :int :int] :int])
+
+(m/=> classification-starvation
+      [:=> [:cat [:map-of :any :int] :any :int] vocab/Violation])
 
 (m/=> type-degeneracy [:=> [:cat vocab/SchemaRef] vocab/Violation])
 
