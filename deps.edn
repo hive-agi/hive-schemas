@@ -11,7 +11,8 @@
 
   ;; hive-spi.schema.{registry,derive,gen,typed} — the single-source levers.
   ;; Published on Clojars; transitively pulls hive-dsl (Result).
-  io.github.hive-agi/hive-spi {:mvn/version "0.2.0"}}
+  io.github.hive-agi/hive-spi {:mvn/version "0.2.0"}
+  org.clojure/tools.reader {:mvn/version "1.5.2"}}
 
  ;; The optional layers live in SIBLING source roots (synth/ ansatz/ typed/
  ;; raster/), never nested under src/. A root inside another is copied twice by the

@@ -17,7 +17,9 @@
             [clojure.string :as str]
             [clojure.test]
             [malli.core :as m]
-            [hive-schemas.vocab :as vocab]))
+            [hive-schemas.vocab :as vocab]
+            [clojure.tools.reader :as tr]
+            [clojure.tools.reader.reader-types :as rt]))
 
 ;; SPDX-License-Identifier: MIT
 ;; Copyright (C) 2026 Pedro Gomes Branquinho (BuddhiLW) <pedrogbranquinho@gmail.com>
@@ -57,16 +59,32 @@
    `{:file path :error message}` when it cannot be read.
 
    Reads with reader conditionals allowed under the :clj feature and
-   `*read-eval*` off."
+   `*read-eval*` off.
+
+   ALIAS-QUALIFIED AUTO-RESOLVED KEYWORDS (`::r/error`) are why this uses
+   tools.reader rather than `clojure.core/read`. Core's reader resolves such a
+   keyword against the CURRENT namespace's alias map, so scanning a file that
+   uses one threw `Invalid token`, and the whole file dropped out of the
+   universe: its functions counted neither as covered nor as missing, and every
+   ratio was quietly measured against a smaller denominator.
+
+   Loading the namespace first would fix the aliases but is not available here,
+   because `coverage` scans BEFORE it loads, and a file that cannot be loaded
+   must still be scannable. So the alias map is a TOTAL FUNCTION returning one
+   placeholder: this fn only ever inspects `(first form)` and `(second form)`
+   to recognise an `ns` or a `defn`, so what an auto-resolved keyword resolves
+   TO is irrelevant, and pretending every alias is known costs nothing and
+   loses nothing."
   ([file] (file-defns file {:include-private? false}))
   ([file {:keys [include-private?]}]
    (let [path (.getPath ^java.io.File file)
          want (if include-private? #{:public :private} #{:public})]
      (try
-       (with-open [r (java.io.PushbackReader. (io/reader file))]
-         (binding [*read-eval* false]
+       (let [rdr (rt/string-push-back-reader (slurp file))]
+         (binding [tr/*read-eval* false
+                   tr/*alias-map* (fn [_] 'hive-schemas.coverage.unresolved-alias)]
            (loop [ns-sym nil defns #{}]
-             (let [form (read {:read-cond :allow :features #{:clj} :eof ::eof} r)]
+             (let [form (tr/read {:read-cond :allow :features #{:clj} :eof ::eof} rdr)]
                (cond
                  (= ::eof form)
                  {:file path :ns ns-sym :defns defns}
