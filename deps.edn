@@ -90,18 +90,12 @@
   {:deps {io.github.hive-agi/hive-build {:mvn/version "0.1.11"}}
    :ns-default hive-build.api}
 
-  ;; DEV co-development. deps.edn pins the PUBLISHED Maven coords (clean pom for
-  ;; the Clojars jar), so editing a sibling normally needs a
-  ;; `clojure -T:build install` round-trip into ~/.m2. This alias overrides the
-  ;; hive-spi / hive-test coords with the sibling working copies, so their edits
-  ;; are picked up live. :override-deps replaces the coordinate everywhere in the
-  ;; tree, so it composes with any alias:
-  ;;   clojure -M:test:local     ; kaocha against ../hive-spi + ../hive-test
-  ;;   clojure -M:nrepl:local    ; REPL against the locals
-  ;; Drop :local to build/deploy/verify against the pinned Maven versions.
-  :local
-  {:override-deps {io.github.hive-agi/hive-spi  {:local/root "../hive-spi"}
-                   io.github.hive-agi/hive-test {:local/root "../hive-test"}}}
+  ;; DEV co-development against the hive-spi / hive-test working copies is the
+  ;; :local alias in the untracked local.deps.edn (committed deps stay
+  ;; :mvn/version-only). It composes with any alias:
+  ;;   clojure -Sdeps "$(cat local.deps.edn)" -M:test:local
+  ;;   clojure -Sdeps "$(cat local.deps.edn)" -M:nrepl:local
+
   ;; Rung-4/5 suite for the raster bridge: the malli <-> deftm projections
   ;; checked against REAL raster kernels, the trifecta defkernel-trifecta
   ;; synthesizes for one, and the rung-D facet over a raster-typed namespace.

@@ -323,14 +323,24 @@ Golden the registry to see contract drift in review:
 | `:test-synth` | `synth/`    | the `hive-schemas.test` bridge (pulls `hive-test`) |
 | `:typed`      | `typed/`    | the rung-D `hive-schemas.typed-check` ns (pulls `typed.clj.checker`) |
 | `:ansatz`     | `ansatz/`   | the rung-E `hive-schemas.verified` / `proven` nses (pulls `ansatz`) |
-| `:local`      | —           | dev: override `hive-spi`/`hive-test` with sibling working copies |
+| `:local`      | —           | dev, in untracked `local.deps.edn`: override `hive-spi`/`hive-test` with sibling working copies |
 
 Every root ships in the jar at the path its namespace resolves at; the heavy dep
 each optional layer needs is the consumer's to add. Core requires none of them.
 
 `:local` is for co-developing the sibling libraries without a
-`clojure -T:build install` round-trip; it composes with any alias, e.g.
-`clojure -M:test:local`.
+`clojure -T:build install` round-trip. Committed `deps.edn` stays
+`:mvn/version`-only, so the alias lives in an untracked `local.deps.edn`:
+
+```clojure
+{:aliases
+ {:local
+  {:override-deps {io.github.hive-agi/hive-spi  {:local/root "../hive-spi"}
+                   io.github.hive-agi/hive-test {:local/root "../hive-test"}}}}}
+```
+
+It composes with any alias, e.g.
+`clojure -Sdeps "$(cat local.deps.edn)" -M:test:local`.
 
 ## ClojureScript
 
