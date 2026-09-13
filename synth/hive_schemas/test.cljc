@@ -47,6 +47,9 @@
      classification-frequencies ?in subject classify n -> {variant count} over
                                 n generated inputs; judged by
                                 strength/classification-starvation"
+  ;; cljs.core has a dispatch-fn of its own; without the exclusion every
+  ;; ClojureScript consumer of this namespace compiles with a :redef warning.
+  (:refer-clojure :exclude [dispatch-fn])
   (:require [hive-spi.schema.registry :as reg]
             [hive-spi.schema.gen :as sgen]
             [hive-test.mutation :as mut]
