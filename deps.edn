@@ -1,6 +1,6 @@
 {:paths ["src" "resources"]
  :deps
- {org.clojure/clojure {:mvn/version "1.12.5"}
+ {org.clojure/clojure {:mvn/version "1.12.6"}
 
   ;; Malli schema engine — the substrate every hive-schemas lever wraps.
   metosin/malli {:mvn/version "0.20.1"}
@@ -11,8 +11,8 @@
 
   ;; hive-spi.schema.{registry,derive,gen,typed} — the single-source levers.
   ;; Published on Clojars; transitively pulls hive-dsl (Result).
-  io.github.hive-agi/hive-spi {:mvn/version "1.1.0"}
-  org.clojure/tools.reader {:mvn/version "1.5.2"}}
+  io.github.hive-agi/hive-spi {:mvn/version "1.1.1"}
+  org.clojure/tools.reader {:mvn/version "1.6.0"}}
 
  ;; The optional layers live in SIBLING source roots (synth/ ansatz/ typed/
  ;; raster/), never nested under src/. A root inside another is copied twice by the
@@ -23,7 +23,7 @@
   ;; (the test-paradigm lib). Core stays test-lib-free.
   :test-synth
   {:extra-paths ["synth"]
-   :extra-deps  {io.github.hive-agi/hive-test {:mvn/version "0.4.4"}}}
+   :extra-deps  {io.github.hive-agi/hive-test {:mvn/version "0.4.5"}}}
 
   ;; OPTIONAL submodule: differential verification facet (ladder rung E).
   ;; hive-schemas.verified wraps ansatz.malli/check-verified! — compiled runtime
@@ -44,7 +44,7 @@
   ;; override (see :local-raster there) rather than a :local/root in this file.
   :raster
   {:extra-paths ["raster"]
-   :extra-deps  {org.replikativ/raster {:mvn/version "0.2.318"}}
+   :extra-deps  {org.replikativ/raster {:mvn/version "0.2.800"}}
    :jvm-opts    ["--enable-native-access=ALL-UNNAMED"
                  "--add-modules=jdk.incubator.vector"
                  "-Xss8m"]}
@@ -63,19 +63,19 @@
   :ansatz-test
   {:extra-paths ["ansatz" "synth" "test-ansatz"]
    :extra-deps  {org.replikativ/ansatz {:mvn/version "0.2.84"}
-                 io.github.hive-agi/hive-test {:mvn/version "0.4.4"}
+                 io.github.hive-agi/hive-test {:mvn/version "0.4.5"}
                  lambdaisland/kaocha {:mvn/version "1.91.1392"}}
    :main-opts   ["-m" "kaocha.runner" "--config-file" "tests.ansatz.edn"]}
 
   :test
   {:extra-paths ["synth" "test"]
-   :extra-deps  {io.github.hive-agi/hive-test {:mvn/version "0.4.4"}
+   :extra-deps  {io.github.hive-agi/hive-test {:mvn/version "0.4.5"}
                  lambdaisland/kaocha {:mvn/version "1.91.1392"}}
    :main-opts   ["-m" "kaocha.runner"]}
 
   :nrepl
   {:extra-paths ["synth" "dev" "test"]
-   :extra-deps  {io.github.hive-agi/hive-test {:mvn/version "0.4.4"}
+   :extra-deps  {io.github.hive-agi/hive-test {:mvn/version "0.4.5"}
                  nrepl/nrepl       {:mvn/version "1.7.0"}
                  cider/cider-nrepl {:mvn/version "0.62.2"}}
    :main-opts   ["-m" "nrepl.cmdline"
@@ -87,7 +87,7 @@
   ;; + raster. Their heavy deps (hive-test, ansatz, typed.clj.checker, raster)
   ;; are OPTIONAL — the consumer adds whichever layer it uses.
   :build
-  {:deps {io.github.hive-agi/hive-build {:mvn/version "0.1.15"}}
+  {:deps {io.github.hive-agi/hive-build {:mvn/version "0.1.17"}}
    :ns-default hive-build.api}
 
   ;; DEV co-development against the hive-spi / hive-test working copies is the
@@ -105,10 +105,10 @@
   ;; typed.clj.checker transitively.
   :raster-test
   {:extra-paths ["raster" "synth" "typed" "test/raster"]
-   :extra-deps  {org.replikativ/raster {:mvn/version "0.2.318"}
-                 io.github.hive-agi/hive-test {:mvn/version "0.4.4"}
+   :extra-deps  {org.replikativ/raster {:mvn/version "0.2.800"}
+                 io.github.hive-agi/hive-test {:mvn/version "0.4.5"}
                  lambdaisland/kaocha {:mvn/version "1.91.1392"}
-                 com.dylibso.chicory/runtime {:mvn/version "1.5.1"}}
+                 com.dylibso.chicory/runtime {:mvn/version "1.7.5"}}
    :jvm-opts    ["--enable-native-access=ALL-UNNAMED"
                  "--add-modules=jdk.incubator.vector"
                  "-Xss8m"]
