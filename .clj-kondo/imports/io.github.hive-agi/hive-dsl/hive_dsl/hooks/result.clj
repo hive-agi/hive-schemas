@@ -38,12 +38,11 @@
             (list* (api/token-node 'do) body))}))
 
 (defn try-effect*
-  "Hook for (try-effect* :category & body).
-   Skips category keyword, analyzes body."
+  "Hook for (try-effect* category & body).
+   Analyzes category as an expression + body."
   [{:keys [node]}]
-  (let [[_category & body] (rest (:children node))]
-    {:node (api/list-node
-            (list* (api/token-node 'do) body))}))
+  (let [[category & body] (rest (:children node))]
+    {:node (leading-then-body [category] body)}))
 
 (defn rescue-log
   "Hook for (rescue-log label fallback & body).
@@ -65,9 +64,16 @@
    and a `:let [..]` entry splices ordinary let bindings. `:lint-as let`
    can't model the interleaved `:let`, so its bound symbols read as
    unresolved. Rewrite to a plain `let` with every binding flattened so
-   kondo resolves them and still analyzes the body + binding exprs."
+   kondo resolves them and still analyzes the body + binding exprs.
+
+   Each ok-binding expr is rewritten to `(:ok expr)`, which is what the macro
+   binds at runtime. Binding the Result expression directly gives the symbol
+   the Result's type, and every downstream use of the payload then reports a
+   mismatch against it."
   [{:keys [node]}]
-  (let [[_ binding-vec & body] (:children node)
+  (let [unwrap (fn [expr]
+                 (api/list-node [(api/keyword-node :ok) expr]))
+        [_ binding-vec & body] (:children node)
         flat (loop [bs (seq (:children binding-vec)) acc []]
                (if (empty? bs)
                  acc
@@ -75,7 +81,8 @@
                    ;; :let [a 1 b 2] — splice the inner vector's bindings
                    (recur (drop 2 bs) (into acc (:children (second bs))))
                    ;; sym expr pair (sym may be a destructure form)
-                   (recur (drop 2 bs) (conj acc (first bs) (second bs))))))]
+                   (recur (drop 2 bs)
+                          (conj acc (first bs) (unwrap (second bs)))))))]
     {:node (api/list-node
             (list* (api/token-node 'let)
                    (api/vector-node flat)
