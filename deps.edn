@@ -44,7 +44,7 @@
   ;; override (see :local-raster there) rather than a :local/root in this file.
   :raster
   {:extra-paths ["raster"]
-   :extra-deps  {org.replikativ/raster {:mvn/version "0.2.817"}}
+   :extra-deps  {org.replikativ/raster {:mvn/version "0.2.951"}}
    :jvm-opts    ["--enable-native-access=ALL-UNNAMED"
                  "--add-modules=jdk.incubator.vector"
                  "-Xss8m"]}
@@ -105,7 +105,7 @@
   ;; typed.clj.checker transitively.
   :raster-test
   {:extra-paths ["raster" "synth" "typed" "test/raster"]
-   :extra-deps  {org.replikativ/raster {:mvn/version "0.2.817"}
+   :extra-deps  {org.replikativ/raster {:mvn/version "0.2.951"}
                  io.github.hive-agi/hive-test {:mvn/version "0.4.10"}
                  lambdaisland/kaocha {:mvn/version "1.91.1392"}
                  com.dylibso.chicory/runtime {:mvn/version "1.7.5"}}
