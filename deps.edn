@@ -3,7 +3,7 @@
  {org.clojure/clojure {:mvn/version "1.12.6"}
 
   ;; Malli schema engine — the substrate every hive-schemas lever wraps.
-  metosin/malli {:mvn/version "0.20.1"}
+  metosin/malli {:mvn/version "0.20.2"}
 
   ;; test.check — malli.generator target; kept in CORE so the schema->generator
   ;; lever works without the (heavier) test-synth alias.
@@ -31,7 +31,7 @@
   ;; Scope: Nat/Bool/List Nat. Core + test-synth stay ansatz-free.
   :ansatz
   {:extra-paths ["ansatz"]
-   :extra-deps  {org.replikativ/ansatz {:mvn/version "0.2.114"}}}
+   :extra-deps  {org.replikativ/ansatz {:mvn/version "0.2.115"}}}
 
   ;; OPTIONAL submodule: raster bridge. hive-schemas.raster derives a malli
   ;; schema from a raster `deftm` overload's signature, so a numeric kernel gets
@@ -62,7 +62,7 @@
   ;; separate from :test so the pinned Maven build stays kernel-free.
   :ansatz-test
   {:extra-paths ["ansatz" "synth" "test-ansatz"]
-   :extra-deps  {org.replikativ/ansatz {:mvn/version "0.2.114"}
+   :extra-deps  {org.replikativ/ansatz {:mvn/version "0.2.115"}
                  io.github.hive-agi/hive-test {:mvn/version "0.4.10"}
                  lambdaisland/kaocha {:mvn/version "1.91.1392"}}
    :main-opts   ["-m" "kaocha.runner" "--config-file" "tests.ansatz.edn"]}
