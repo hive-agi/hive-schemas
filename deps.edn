@@ -3,7 +3,7 @@
  {org.clojure/clojure {:mvn/version "1.12.6"}
 
   ;; Malli schema engine — the substrate every hive-schemas lever wraps.
-  metosin/malli {:mvn/version "0.20.2"}
+  metosin/malli {:mvn/version "0.20.3"}
 
   ;; test.check — malli.generator target; kept in CORE so the schema->generator
   ;; lever works without the (heavier) test-synth alias.
@@ -11,7 +11,7 @@
 
   ;; hive-spi.schema.{registry,derive,gen,typed} — the single-source levers.
   ;; Published on Clojars; transitively pulls hive-dsl (Result).
-  io.github.hive-agi/hive-spi {:mvn/version "1.4.4"}
+  io.github.hive-agi/hive-spi {:mvn/version "1.4.9"}
   org.clojure/tools.reader {:mvn/version "1.6.0"}}
 
  ;; The optional layers live in SIBLING source roots (synth/ ansatz/ typed/
@@ -31,7 +31,7 @@
   ;; Scope: Nat/Bool/List Nat. Core + test-synth stay ansatz-free.
   :ansatz
   {:extra-paths ["ansatz"]
-   :extra-deps  {org.replikativ/ansatz {:mvn/version "0.2.115"}}}
+   :extra-deps  {org.replikativ/ansatz {:mvn/version "0.2.116"}}}
 
   ;; OPTIONAL submodule: raster bridge. hive-schemas.raster derives a malli
   ;; schema from a raster `deftm` overload's signature, so a numeric kernel gets
@@ -44,7 +44,7 @@
   ;; override (see :local-raster there) rather than a :local/root in this file.
   :raster
   {:extra-paths ["raster"]
-   :extra-deps  {org.replikativ/raster {:mvn/version "0.2.1245"}}
+   :extra-deps  {org.replikativ/raster {:mvn/version "0.2.1694"}}
    :jvm-opts    ["--enable-native-access=ALL-UNNAMED"
                  "--add-modules=jdk.incubator.vector"
                  "-Xss8m"]}
@@ -62,7 +62,7 @@
   ;; separate from :test so the pinned Maven build stays kernel-free.
   :ansatz-test
   {:extra-paths ["ansatz" "synth" "test-ansatz"]
-   :extra-deps  {org.replikativ/ansatz {:mvn/version "0.2.115"}
+   :extra-deps  {org.replikativ/ansatz {:mvn/version "0.2.116"}
                  io.github.hive-agi/hive-test {:mvn/version "0.4.11"}
                  lambdaisland/kaocha {:mvn/version "1.91.1392"}}
    :main-opts   ["-m" "kaocha.runner" "--config-file" "tests.ansatz.edn"]}
@@ -105,7 +105,7 @@
   ;; typed.clj.checker transitively.
   :raster-test
   {:extra-paths ["raster" "synth" "typed" "test/raster"]
-   :extra-deps  {org.replikativ/raster {:mvn/version "0.2.1245"}
+   :extra-deps  {org.replikativ/raster {:mvn/version "0.2.1694"}
                  io.github.hive-agi/hive-test {:mvn/version "0.4.11"}
                  lambdaisland/kaocha {:mvn/version "1.91.1392"}
                  com.dylibso.chicory/runtime {:mvn/version "1.7.5"}}
