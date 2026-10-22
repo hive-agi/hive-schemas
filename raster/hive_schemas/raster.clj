@@ -399,6 +399,71 @@
          (and (number? out) (approx= expected out eps))
          (approx-seq= expected out eps))))))
 
+(def ^:private Overload
+  "One concrete deftm overload, as `overloads` returns it."
+  [:map
+   [:impl-var [:fn var?]]
+   [:name :symbol]
+   [:params [:vector :symbol]]
+   [:tags [:vector :symbol]]
+   [:ret [:maybe :symbol]]])
+
+(def ^:private Opts
+  "The projection knobs; every key optional, nil accepted."
+  [:maybe [:map
+           [:lengths {:optional true} [:or [:= :infer] [:map-of :symbol [:set :symbol]]]]
+           [:min-len {:optional true} nat-int?]
+           [:max-len {:optional true} nat-int?]
+           [:magnitude {:optional true} number?]
+           [:dtype {:optional true} :keyword]]])
+
+(def ^:private MalliSchema
+  "Anything `m/schema` accepts as a form, or a schema instance."
+  [:or :keyword [:fn vector?] :symbol [:fn m/schema?]])
+
+(def ^:private Annotation
+  "A deftm `:- ` annotation: `Double`, or `(Array double)`."
+  [:or :symbol [:sequential :symbol]])
+
+(def ^:private ParamVector
+  "A deftm parameter vector: `[x :- Double, xs :- (Array double)]`."
+  [:vector [:or :symbol :keyword [:sequential :symbol]]])
+
+(def ^:private SchemaPair
+  "`{:in arglist-schema :out return-schema}`."
+  [:map [:in [:fn m/schema?]] [:out [:fn vector?]]])
+
+(def ^:private OverloadKeys
+  "The `.in` / `.out` registry keys of one overload."
+  [:tuple :qualified-keyword :qualified-keyword])
+
+(m/=> scalar-schema [:=> [:cat :symbol Opts] [:fn vector?]])
+(m/=> array-gen [:=> [:cat :symbol nat-int? Opts] [:fn gen/generator?]])
+(m/=> array-schema [:=> [:cat :symbol Opts] [:fn vector?]])
+(m/=> overloads [:function
+                 [:=> [:cat [:fn var?]] [:vector Overload]]
+                 [:=> [:cat [:fn var?] Opts] [:vector Overload]]])
+(m/=> arglist-schema [:=> [:cat Overload Opts] [:fn m/schema?]])
+(m/=> return-schema [:=> [:cat Overload Opts] [:fn vector?]])
+(m/=> overload-schema [:function
+                       [:=> [:cat Overload] SchemaPair]
+                       [:=> [:cat Overload Opts] SchemaPair]])
+(m/=> approx-seq= [:function
+                   [:=> [:cat [:maybe [:fn seqable?]] [:maybe [:fn seqable?]]] :boolean]
+                   [:=> [:cat [:maybe [:fn seqable?]] [:maybe [:fn seqable?]] :double] :boolean]])
+(m/=> schema->tag [:=> [:cat MalliSchema] [:maybe :symbol]])
+(m/=> schema->array-tag [:=> [:cat MalliSchema] [:maybe :symbol]])
+(m/=> schema->annotation [:=> [:cat MalliSchema] [:maybe Annotation]])
+(m/=> param-annotations [:=> [:cat MalliSchema] ParamVector])
+(m/=> overload-annotations [:=> [:cat Overload] ParamVector])
+(m/=> return-annotation [:=> [:cat Overload] [:maybe Annotation]])
+(m/=> kernel-schema [:=> [:cat [:fn var?] Opts] SchemaPair])
+(m/=> overload-keys [:=> [:cat Overload] OverloadKeys])
+(m/=> register-overload! [:=> [:cat Overload Opts] OverloadKeys])
+(m/=> approx-rel [:function
+                  [:=> [:cat ifn?] fn?]
+                  [:=> [:cat ifn? [:maybe [:map [:eps {:optional true} :double]]]] fn?]])
+
 (m/=> array-tag? [:=> [:cat :any] :boolean])
 (m/=> deftm? [:=> [:cat :any] :boolean])
 (m/=> coupled? [:=> [:cat :map] :boolean])

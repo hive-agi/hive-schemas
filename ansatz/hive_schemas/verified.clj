@@ -20,7 +20,8 @@
    One macro:
      deftrifecta-verified name subject :runs n -> a deftest asserting no divergence"
   (:require [clojure.test]
-            [ansatz.malli :as am]))
+            [ansatz.malli :as am]
+            [malli.core :as m]))
 
 ;; SPDX-License-Identifier: MIT
 ;; Copyright (C) 2026 Pedro Gomes Branquinho (BuddhiLW) <pedrogbranquinho@gmail.com>
@@ -57,3 +58,5 @@
     `(clojure.test/deftest ~name
        (let [v# (verified-divergence '~nsq '~fnq ~runs)]
          (clojure.test/is (nil? v#) (str v#))))))
+
+(m/=> verified-divergence [:=> [:cat :symbol :symbol pos-int?] [:maybe :string]])
