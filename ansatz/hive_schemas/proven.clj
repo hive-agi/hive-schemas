@@ -28,7 +28,8 @@
      deftrifecta-csimp   name :params p :prop q :tactics t [:name n]
                          -> a deftest asserting the kernel proves f=g, licensing f->g"
   (:require [clojure.test]
-            [ansatz.core :as a]))
+            [ansatz.core :as a]
+            [malli.core :as m]))
 
 ;; SPDX-License-Identifier: MIT
 ;; Copyright (C) 2026 Pedro Gomes Branquinho (BuddhiLW) <pedrogbranquinho@gmail.com>
@@ -111,3 +112,10 @@
   `(clojure.test/deftest ~name
      (let [msg# (csimp-failure '~(or tname name) ~params ~prop ~tactics)]
        (clojure.test/is (nil? msg#) (str msg#)))))
+
+(def ^:private Prop
+  "A quoted ansatz Prop form, e.g. '(= Nat (f n 0) n)."
+  [:or [:fn seq?] :symbol])
+
+(m/=> proof-failure [:=> [:cat :symbol [:vector :any] Prop [:vector :any]] [:maybe :string]])
+(m/=> csimp-failure [:=> [:cat :symbol [:vector :any] Prop [:vector :any]] [:maybe :string]])

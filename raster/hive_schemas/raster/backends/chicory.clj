@@ -7,7 +7,8 @@
 
    Levers:
      chicory-backend  -> an IWasmBackend over Chicory"
-  (:require [hive-schemas.raster.backends :as bk])
+  (:require [hive-schemas.raster.backends :as bk]
+            [malli.core :as m])
   (:import [com.dylibso.chicory.wasm Parser]
            [com.dylibso.chicory.runtime Instance]))
 
@@ -71,3 +72,5 @@
   "Chicory as an `IWasmBackend`."
   []
   (->ChicoryBackend))
+
+(m/=> chicory-backend [:=> [:cat] bk/Backend])
