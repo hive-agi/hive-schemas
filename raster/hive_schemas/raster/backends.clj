@@ -162,6 +162,22 @@
   [module]
   (byte-array (:bytes module)))
 
+(def Backend
+  "Anything satisfying `IWasmBackend`."
+  [:fn {:error/message "must satisfy IWasmBackend"} #(satisfies? IWasmBackend %)])
+
+(def ^:private Engine
+  "The zwasm execution engines the cljw binary exposes."
+  [:enum :interp :jit])
+
+(m/=> cljw-backend [:function
+                    [:=> [:cat Engine] Backend]
+                    [:=> [:cat :string Engine] Backend]])
+(m/=> call-error [:=> [:cat [:maybe [:map [:call {:optional true} :any]]]] [:maybe :string]])
+(m/=> compile-plan [:=> [:cat [:fn var?] :string [:maybe [:map [:dtype {:optional true} :keyword]]]]
+                    [:map [:bytes :any]]])
+(m/=> module-bytes [:=> [:cat [:map [:bytes :any]]] bytes?])
+
 ;; =============================================================================
 ;; Contracts
 ;; =============================================================================
