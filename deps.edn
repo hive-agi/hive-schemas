@@ -67,6 +67,13 @@
                  lambdaisland/kaocha {:mvn/version "1.91.1392"}}
    :main-opts   ["-m" "kaocha.runner" "--config-file" "tests.ansatz.edn"]}
 
+  ;; Static fleet census (hive-schemas.census): one EDN row per repo dir.
+  ;;   clojure -M:census ../hive-mcp ../hive-carto
+  ;;   clojure -M:census --ratchet census-floors.edn .   (exit 1 below a floor)
+  ;; The namespace also runs under babashka with malli on the classpath.
+  :census
+  {:main-opts ["-m" "hive-schemas.census"]}
+
   :test
   {:extra-paths ["synth" "test"]
    :extra-deps  {io.github.hive-agi/hive-test {:mvn/version "0.5.0"}

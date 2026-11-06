@@ -1,0 +1,5 @@
+;; Census ratchet floors: contract% and facet% per repo, as measured by
+;; hive-schemas.census. Raise a floor when coverage rises; never lower one to
+;; make a red build green. Regenerate with:
+;;   clojure -M -m hive-schemas.census --record census-floors.edn .
+{"hive-schemas" {:contract-pct 97.5, :facet-pct 91.7}}
