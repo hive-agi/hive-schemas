@@ -5,7 +5,8 @@
    `hive-schemas.coverage` answers the same contract question from the live
    registry, inside one JVM, for one repo. The census answers it for many repos
    at once and for repos that will not load together, at the price of seeing
-   only contracts written as forms: `m/=>` under any alias of malli.core,
+   only contracts written as forms: `=>` from malli.core or hive-test.contract
+   under any alias or `:refer`,
    `:malli/schema` in a defn's metadata or attr map, and malli.experimental
    `defn` with `:-` annotations.
 
@@ -94,33 +95,49 @@
 
 (defn- expand-spec [prefix spec]
   (cond
-    (symbol? spec) [[(str prefix spec) nil]]
+    (symbol? spec) [[(str prefix spec) nil nil]]
     (and (sequential? spec) (symbol? (first spec)))
     (let [n (str prefix (first spec)) opts (rest spec)]
       (if (and (seq opts) (or (sequential? (first opts)) (symbol? (first opts))))
         (mapcat #(expand-spec (str n ".") %) opts)
-        [[n (some (fn [[k v]] (when (contains? #{:as :as-alias} k) (str v)))
-                  (partition 2 1 opts))]]))
+        (let [kv (partition 2 1 opts)]
+          [[n
+            (some (fn [[k v]] (when (contains? #{:as :as-alias} k) (str v))) kv)
+            (some (fn [[k v]] (when (and (= :refer k) (sequential? v)) (mapv str v))) kv)]])))
     :else []))
 
 (defn ns-requires
-  "`{:aliases {alias-string ns-string} :required #{ns-string}}` of an ns form."
+  "`{:aliases {alias-string ns-string} :refers {name-string ns-string}
+    :required #{ns-string}}` of an ns form."
   [ns-form]
   (let [pairs (->> (rest ns-form)
                    (filter #(and (seq? %) (contains? #{:require :require-macros} (first %))))
                    (mapcat rest)
                    (mapcat #(expand-spec "" %)))]
     {:aliases  (into {} (keep (fn [[n a]] (when a [a n]))) pairs)
+     :refers   (into {} (for [[n _ rs] pairs r rs] [r n]))
      :required (into (sorted-set) (map first) pairs)}))
 
 ;; =============================================================================
 ;; Summaries
 ;; =============================================================================
 
-(defn- head-from? [form aliases ns-name head-name]
+(def contract-nss
+  "Namespaces whose `=>` registers a malli function contract. hive-test.contract/=>
+   expands to malli.core/=> on a JVM with malli, so it counts the same."
+  #{"malli.core" "hive-test.contract"})
+
+(defn- head-from?
+  "True when `form` is `(head-name sym ...)` with the head resolving into one of
+   `ns-names`: qualified through an alias (or the full ns), or unqualified and
+   brought in by `:refer`."
+  [form {:keys [aliases refers]} ns-names head-name]
   (and (seq? form) (symbol? (first form)) (symbol? (second form))
        (= head-name (name (first form)))
-       (some-> (namespace (first form)) (as-> q (get aliases q q)) (= ns-name))))
+       (contains? ns-names
+                  (if-let [q (namespace (first form))]
+                    (get aliases q q)
+                    (get refers head-name)))))
 
 (defn- plain-defn [form]
   (when (and (seq? form) (contains? #{'defn 'defn-} (first form)) (symbol? (second form)))
@@ -137,12 +154,12 @@
    the forms carry no ns form."
   [forms]
   (when-let [nsf (ns-form forms)]
-    (let [{:keys [aliases required]} (ns-requires nsf)
-          mx     (for [x forms :when (head-from? x aliases "malli.experimental" "defn")]
+    (let [{:keys [aliases required] :as reqs} (ns-requires nsf)
+          mx     (for [x forms :when (head-from? x reqs #{"malli.experimental"} "defn")]
                    {:name     (str (second x))
                     :private? (boolean (:private (meta (second x))))
                     :schema?  (boolean (some #{:-} (tree-seq coll? seq (drop 2 x))))})
-          arrows (for [x forms :when (head-from? x aliases "malli.core" "=>")] (second x))
+          arrows (for [x forms :when (head-from? x reqs contract-nss "=>")] (second x))
           pub    (remove :private? (concat (keep plain-defn forms) mx))]
       {:ns               (str (second nsf))
        :required         required
