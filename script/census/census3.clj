@@ -6,9 +6,10 @@
 ;;  (a) defn metadata in any shape (^:private, ^{...} over several lines, defn-),
 ;;  (b) defns and m/=> inside #?(:clj ...) / #?@(:clj [...]) (read under :clj,
 ;;      the same feature hive-schemas.coverage/file-defns reads with),
-;;  (c) contracts as m/=> under ANY alias of malli.core (resolved from the ns
-;;      form), {:malli/schema ..} in the attr map or metadata, and mx/defn
-;;      (malli.experimental) with :- annotations,
+;;  (c) contracts as m/=> under ANY alias of malli.core or hive-test.contract
+;;      (resolved from the ns form, :refer [=>] included), {:malli/schema ..}
+;;      in the attr map or metadata, and mx/defn (malli.experimental) with :-
+;;      annotations,
 ;;  (d) a test ns credits a source ns only when it REQUIRES it (parsed from the
 ;;      ns form) or is named exactly <ns>-test; census2's prefix match also
 ;;      credited foo.bar from foo.bar-baz-test.
@@ -59,13 +60,14 @@
                          (if (and (seq opts) (sequential? (first opts)))
                            (mapcat #(expand (str n ".") %) opts)
                            (let [m (apply hash-map (if (even? (count opts)) opts (butlast opts)))]
-                             [[n (some-> (:as m) str)]])))
+                             [[n (some-> (:as m) str) (when (sequential? (:refer m)) (map str (:refer m)))]])))
                        :else []))
         pairs (mapcat #(expand "" %) specs)]
     {:aliases (into {} (keep (fn [[n a]] (when a [a n]))) pairs)
+     :refers (into {} (for [[n _ rs] pairs r rs] [r n]))
      :required (set (map first pairs))}))
 
-(def malli-nss #{"malli.core"})
+(def malli-nss #{"malli.core" "hive-test.contract"})
 (def mx-nss #{"malli.experimental"})
 
 (defn head-in? [form aliases nss local-names]
@@ -84,12 +86,13 @@
   (when-let [forms (read-forms f)]
     (when-let [nsf (ns-form forms)]
       (let [ns (str (second nsf))
-            {:keys [aliases required]} (requires nsf)
+            {:keys [aliases refers required]} (requires nsf)
+            referred (if (contains? malli-nss (get refers "=>")) #{"=>"} #{})
             d (keep defn-name+private forms)
             mx (for [x forms :when (and (head-in? x aliases mx-nss #{}) (= "defn" (name (first x))) (symbol? (second x)))]
                  {:name (str (second x)) :private? (:private (meta (second x)))
                   :schema-meta? (boolean (some #{:-} (flatten (map #(if (coll? %) (seq %) [%]) (drop 2 x)))))})
-            arrows (for [x forms :when (and (head-in? x aliases malli-nss #{}) (= "=>" (name (first x))) (symbol? (second x)))]
+            arrows (for [x forms :when (and (head-in? x aliases malli-nss referred) (= "=>" (name (first x))) (symbol? (second x)))]
                      (second x))
             local (set (for [s arrows :when (nil? (namespace s))] (str s)))
             remote (set (for [s arrows :when (namespace s)] (str (get aliases (namespace s) (namespace s)) "/" (name s))))

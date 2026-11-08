@@ -54,6 +54,17 @@
         (sort-by #(.getPath ^java.io.File %))
         vec)))
 
+(defn- visibility
+  ":private or :public for a defining form. `defn-`, `^:private`, `^{:private true}`
+   and a `{:private true}` attr map (after an optional docstring) all make it private."
+  [[head fn-name & more]]
+  (let [attr (first (drop-while string? (take 2 more)))]
+    (if (or (= :private (get defining-forms head))
+            (:private (meta fn-name))
+            (and (map? attr) (:private attr)))
+      :private
+      :public)))
+
 (defn file-defns
   "`{:file path :ns sym :defns #{qualified-sym}}` for `file`, or
    `{:file path :error message}` when it cannot be read.
@@ -95,7 +106,7 @@
                  (and (seq? form) ns-sym
                       (contains? defining-forms (first form))
                       (symbol? (second form))
-                      (contains? want (get defining-forms (first form))))
+                      (contains? want (visibility form)))
                  (recur ns-sym (conj defns (symbol (str ns-sym) (str (second form)))))
 
                  :else

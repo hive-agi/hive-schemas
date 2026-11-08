@@ -1,7 +1,9 @@
 (ns hive-schemas.census-test
   "The static census: its pure levers as hive-test trifectas, a fixture repo
    with a known answer, and the ratchet gate pointed at hive-schemas itself."
-  (:require [clojure.java.io :as io]
+  (:require [clojure.edn]
+            [clojure.java.io :as io]
+            [clojure.java.shell :as shell]
             [clojure.test :refer [deftest is testing]]
             [hive-schemas.census :as census]
             [hive-schemas.test :as hst]))
@@ -133,6 +135,47 @@
       (is (= {:fns 6 :contracted 3 :ns 2 :hive-tested 1 :contract-pct 50.0 :facet-pct 50.0}
              (select-keys row [:fns :contracted :ns :hive-tested :contract-pct :facet-pct])))
       (is (= 1 (count (:unreadable row)))))))
+
+(deftest repo-census-counts-hive-test-contracts
+  (let [root (.toFile (java.nio.file.Files/createTempDirectory
+                       "census-hc" (make-array java.nio.file.attribute.FileAttribute 0)))]
+    (write! root "src/hc/a.cljc"
+            (str "(ns hc.a (:require [hive-test.contract :as hc]))\n"
+                 "(defn one [x] x)\n(defn two [x] x)\n(defn three [x] x)\n"
+                 "(hc/=> one [:=> [:cat :int] :int])\n"
+                 "(hive-test.contract/=> two [:=> [:cat :int] :int])\n"))
+    (write! root "src/hc/b.clj"
+            (str "(ns hc.b (:require [hive-test.contract :refer [=>]]))\n"
+                 "(defn four [x] x)\n(=> four [:=> [:cat :int] :int])\n"))
+    (write! root "src/hc/c.clj"
+            (str "(ns hc.c (:require [other.lib :refer [=>]]))\n"
+                 "(defn five [x] x)\n(=> five [:=> [:cat :int] :int])\n"))
+    (let [per (into {} (map (juxt :ns identity)) (:per (census/repo-census root {:name "hc"})))]
+      (testing "hc/=> through an alias and the full ns name"
+        (is (= #{"one" "two"} (:covered (per "hc.a")))))
+      (testing "=> referred from hive-test.contract"
+        (is (= #{"four"} (:covered (per "hc.b")))))
+      (testing "an unqualified => referred from any other ns is not a contract"
+        (is (= #{} (:covered (per "hc.c"))))))))
+
+(deftest census3-script-counts-hive-test-contracts
+  (let [root (.toFile (java.nio.file.Files/createTempDirectory
+                       "census3-hc" (make-array java.nio.file.attribute.FileAttribute 0)))
+        repo (io/file root "hcrepo")]
+    (write! repo "deps.edn" "{}")
+    (write! repo "src/hc/a.clj"
+            (str "(ns hc.a (:require [hive-test.contract :as hc]))\n"
+                 "(defn one [x] x)\n(defn two [x] x)\n"
+                 "(hc/=> one [:=> [:cat :int] :int])\n"))
+    (write! repo "src/hc/b.clj"
+            (str "(ns hc.b (:require [hive-test.contract :refer [=>]]))\n"
+                 "(defn three [x] x)\n(=> three [:=> [:cat :int] :int])\n"))
+    (let [{:keys [exit out err]} (shell/sh "bb" "script/census/census3.clj" "--edn"
+                                           (.getPath root) "hcrepo")
+          per (get (clojure.edn/read-string out) "hcrepo")]
+      (is (zero? exit) err)
+      (is (= #{"one"} (:covered (per "hc.a"))))
+      (is (= #{"three"} (:covered (per "hc.b")))))))
 
 ;; =============================================================================
 ;; The ratchet, pointed at hive-schemas
