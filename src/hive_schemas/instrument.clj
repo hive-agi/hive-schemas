@@ -46,27 +46,37 @@
   (when (seq ns-syms)
     {:filters [(apply mi/-filter-ns ns-syms)]}))
 
+(defn- scoped-options
+  "`options` with its `:ns` (nil, a symbol or a seq of symbols) replaced by the
+   malli namespace filter it denotes; no filter when `:ns` is absent."
+  [{:keys [ns] :as options}]
+  (let [ns-syms (cond (nil? ns) nil (symbol? ns) [ns] :else (vec ns))]
+    (merge (dissoc options :ns) (ns-options ns-syms))))
+
+(defn- wrapped-vars
+  "Run the malli var-root operation `op` (mi/instrument! or mi/unstrument!) under
+   `options` and keep the vars it touched. malli answers one entry per
+   REGISTERED function schema, nil for each var the `:ns` filter rejects; once a
+   dependency (hive-spi, hive-test) registers its own contracts those nils would
+   be counted as touched, so they are dropped."
+  [op options]
+  (filterv some? (op (scoped-options options))))
+
 (defn instrument!
   "Wrap every contracted var so calls are validated. Returns the vector of vars
    instrumented. Restrict with `:ns` (a symbol or seq of symbols).
 
-   malli answers one entry per REGISTERED function schema, nil for each var the
-   `:ns` filter rejects; once a dependency (hive-spi, hive-test) registers its
-   own contracts those nils would be counted as wrapped, so they are dropped.
+   Filtered-out registry entries are dropped (see `wrapped-vars`).
 
    Mutates var roots — see the namespace docstring."
   ([] (instrument! {}))
-  ([{:keys [ns] :as options}]
-   (let [ns-syms (cond (nil? ns) nil (symbol? ns) [ns] :else (vec ns))]
-     (filterv some? (mi/instrument! (merge (dissoc options :ns) (ns-options ns-syms)))))))
+  ([options] (wrapped-vars mi/instrument! options)))
 
 (defn unstrument!
   "Restore the original fns behind every contracted var. Returns the vector of
    vars restored (filtered-out registry entries dropped, as in `instrument!`)."
   ([] (unstrument! {}))
-  ([{:keys [ns] :as options}]
-   (let [ns-syms (cond (nil? ns) nil (symbol? ns) [ns] :else (vec ns))]
-     (filterv some? (mi/unstrument! (merge (dissoc options :ns) (ns-options ns-syms)))))))
+  ([options] (wrapped-vars mi/unstrument! options)))
 
 (defn check-all
   "malli's generative check of every contracted var: nil when all satisfy their
@@ -74,11 +84,8 @@
 
    Arguments are generated, so the result is SAMPLED."
   ([] (check-all {}))
-  ([{:keys [ns] :as options}]
-   (let [ns-syms (cond (nil? ns) nil (symbol? ns) [ns] :else (vec ns))
-         result  (mi/check (merge {:gen mg/generate}
-                                  (dissoc options :ns)
-                                  (ns-options ns-syms)))]
+  ([options]
+   (let [result (mi/check (merge {:gen mg/generate} (scoped-options options)))]
      (when (seq result)
        (into (sorted-map) result)))))
 
