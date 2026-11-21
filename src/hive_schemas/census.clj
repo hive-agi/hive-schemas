@@ -339,3 +339,28 @@
 (m/=> parse-args [:=> [:cat [:sequential :string]]
                   [:map [:repos [:vector :string]] [:detail? :boolean]]])
 (m/=> -main [:=> [:cat [:* :string]] :nil])
+
+;; --- private stages ----------------------------------------------------------
+
+(def ^:private Forms
+  "Top-level forms of a source file, generated from the shapes the census reads."
+  [:sequential {:gen/elements [['(ns a.b (:require [malli.core :as m])) '(defn f [x] x)
+                                '(m/=> f [:=> [:cat :int] :int])]
+                               []]}
+   :any])
+
+(def ^:private AFile
+  [:any {:gen/elements [(io/file "src") (io/file "absent-dir")]}])
+
+(m/=> census-file? [:=> [:cat AFile AFile] :boolean])
+(m/=> census-files [:=> [:cat AFile] [:sequential :any]])
+(m/=> flatten-do [:=> [:cat :any] [:sequential :any]])
+(m/=> ns-form [:=> [:cat Forms] [:maybe [:sequential :any]]])
+(m/=> expand-spec [:=> [:cat :string [:any {:gen/elements ['a.b '[a.b :as ab] '[a [b :refer [x]]]]}]]
+                   [:sequential [:tuple :string [:maybe :string] [:maybe [:vector :string]]]]])
+(m/=> head-from? [:=> [:cat :any [:map [:aliases {:optional true} [:map-of :string :string]]
+                                   [:refers {:optional true} [:map-of :string :string]]]
+                        [:set :string] :string]
+                  :boolean])
+(m/=> plain-defn [:=> [:cat :any]
+                  [:maybe [:map [:name :string] [:private? :boolean] [:schema? :boolean]]]])

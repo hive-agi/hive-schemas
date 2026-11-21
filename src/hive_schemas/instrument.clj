@@ -132,3 +132,14 @@
       [:function
        [:=> [:cat] [:sequential :any]]
        [:=> [:cat [:maybe vocab/Opts]] [:sequential :any]]])
+
+;; check-all — and check-violation, its one-branch delegate — stay uncontracted
+;; on purpose: they are generatively re-entrant (mi/check over the registry
+;; reaches them again). See the exemptions in hive-schemas.self-contract-test.
+
+(def ^:private NsSelector
+  [:or :nil :symbol [:sequential :symbol]])
+
+(m/=> ns-options [:=> [:cat [:maybe [:sequential :symbol]]] [:maybe [:map [:filters [:vector :any]]]]])
+
+(m/=> scoped-options [:=> [:cat [:map [:ns {:optional true} NsSelector]]] [:map]])

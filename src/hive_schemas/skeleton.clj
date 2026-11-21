@@ -264,3 +264,21 @@
 (m/=> skeleton-of [:=> [:cat :any [:maybe :map]] [:maybe Skeleton]])
 (m/=> parse-args [:=> [:cat [:sequential :string]] [:map [:files [:vector :string]]]])
 (m/=> -main [:=> [:cat [:* :string]] :nil])
+
+;; --- private stages ----------------------------------------------------------
+
+(def ^:private Forms
+  "Top-level forms of a source file, generated from the shapes the inventory reads."
+  [:sequential {:gen/elements [['(ns a.b (:require [malli.core :as m])) '(defn f [x] x)
+                                '(m/=> f [:=> [:cat :int] :int]) '(def ^:private k 1)]
+                               []]}
+   :any])
+
+(m/=> arrow-arity [:=> [:cat :any] [:maybe Arity]])
+(m/=> last-segment [:=> [:cat :string] :string])
+(m/=> ns-form [:=> [:cat Forms] [:maybe [:sequential :any]]])
+(m/=> arrow? [:=> [:cat :any [:map-of :string :string]] [:maybe :boolean]])
+(m/=> meta-schemas [:=> [:cat Forms] [:map-of :string :any]])
+(m/=> top-defs [:=> [:cat Forms] [:map-of :string :boolean]])
+(m/=> referenced-nses [:=> [:cat :any] [:set :string]])
+(m/=> code-str [:=> [:cat :any] :string])

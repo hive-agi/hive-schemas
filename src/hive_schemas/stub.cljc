@@ -170,3 +170,7 @@
 (m/=> violations [:=> [:cat :any] [:sequential :any]])
 
 (m/=> trace->cases [:=> [:cat [:maybe [:sequential :any]]] [:map-of :keyword :any]])
+
+(m/=> input-violation [:=> [:cat [:any {:gen/elements [:int [:cat :int :string] [:map [:a :int]]]}]
+                             [:sequential :any]]
+                       [:maybe [:map [:value :any] [:explanation :any]]]])

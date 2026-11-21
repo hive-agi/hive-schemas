@@ -286,3 +286,40 @@
 (m/=> coverage [:=> [:cat [:maybe vocab/Opts]] [:map]])
 
 (m/=> coverage-failures [:=> [:cat [:maybe [:map]]] vocab/Violations])
+
+;; --- private stages ----------------------------------------------------------
+
+(def ^:private SourceForm
+  "A top-level form as tools.reader answers it; generated from a few shapes the
+   scanner distinguishes."
+  [:any {:gen/elements ['(ns a.b) '(defn f [x] x) '(defn- g [] 1)
+                        '(defn ^:private h [] 1) '(def x 1) :kw 42]}])
+
+(def ^:private Visibility [:enum :public :private])
+
+(m/=> extension [:=> [:cat [:any {:gen/elements [(io/file "a.clj") (io/file "noext")]}]]
+                 [:maybe :string]])
+
+(m/=> visibility [:=> [:cat [:sequential {:gen/elements ['(defn f [x] x) '(defn- g [] 1)
+                                                         '(defn h {:private true} [] 1)]}
+                             :any]]
+                  Visibility])
+
+(m/=> ns-decl [:=> [:cat SourceForm] [:maybe :symbol]])
+
+(m/=> defined-fn [:=> [:cat [:maybe :symbol] [:set Visibility] SourceForm]
+                  [:maybe :qualified-symbol]])
+
+(m/=> scan-form [:=> [:cat [:set Visibility]
+                      [:map [:ns [:maybe :symbol]] [:defns [:set :qualified-symbol]]]
+                      SourceForm]
+                 [:map [:ns [:maybe :symbol]] [:defns [:set :qualified-symbol]]]])
+
+(m/=> read-source-forms [:=> [:cat [:string {:gen/elements ["(ns a.b)\n(defn f [x] x)" ""]}]]
+                         [:vector :any]])
+
+(m/=> load-namespaces [:=> [:cat [:or {:gen/elements [['clojure.set] #{'clojure.set}]}
+                                   [:set :symbol] [:sequential :symbol]]]
+                       [:vector [:map [:ns :symbol] [:error :string]]]])
+
+(m/=> blank-reasons [:=> [:cat [:maybe [:map-of :symbol :any]]] [:set :symbol]])

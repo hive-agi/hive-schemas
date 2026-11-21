@@ -31,10 +31,12 @@
              (pr-str (mapv :ns (:unloadable report)))))))
 
 (deftest every-contract-survives-instrumentation
-  (let [nss     (into [] (comp (map namespace) (map symbol) (distinct))
-                      (:covered (cov/coverage {:paths gated-paths :exempt exempt})))
+  (let [covered (:covered (cov/coverage {:paths gated-paths :exempt exempt}))
+        nss     (into [] (comp (map namespace) (map symbol) (distinct)) covered)
         wrapped (inst/instrument! {:ns nss})]
     (try
-      (is (= (count wrapped) (count (:covered (cov/coverage {:paths gated-paths :exempt exempt}))))
-          "every covered function should have been wrappable")
+      (is (empty? (remove (into #{} (map symbol) wrapped) covered))
+          "every covered public function should have been wrappable")
+      (is (<= (count covered) (count wrapped))
+          "private stages carry contracts too, so at least the public set is wrapped")
       (finally (inst/unstrument! {:ns nss})))))

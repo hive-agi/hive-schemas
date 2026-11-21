@@ -150,3 +150,6 @@
        [:=> [:cat vocab/SchemaRef [:sequential :any]] vocab/Violation]])
 
 (m/=> json-schema-violation [:=> [:cat vocab/SchemaRef] vocab/Violation])
+
+(m/=> cases [:=> [:cat [:any {:gen/elements [:int :string [:map [:a :int]]]}] :int [:int {:min 0 :max 20}]]
+             [:maybe [:sequential :any]]])
