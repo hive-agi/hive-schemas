@@ -168,3 +168,6 @@
        [:=> [:cat :any vocab/Path] vocab/Path]])
 
 (m/=> spit-ns! [:=> [:cat :any [:maybe [:map]]] [:map]])
+
+(m/=> subject-namespaces [:=> [:cat [:sequential [:map [:plan/subject :qualified-symbol]]]]
+                          [:vector :symbol]])

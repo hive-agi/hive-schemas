@@ -70,3 +70,5 @@
 (m/=> arglist-schema? [:=> [:cat vocab/SchemaRef] :boolean])
 
 (m/=> subject-symbol [:=> [:cat vocab/SubjectRef] :symbol])
+
+(m/=> var-symbol [:=> [:cat :any] [:maybe :qualified-symbol]])

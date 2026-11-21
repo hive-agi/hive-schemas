@@ -308,9 +308,10 @@
 (defn model-step
   "A stateful machine's state-conformance oracle from a malli schema:
    (fn [model] boolean), for an `:invariants` entry — every reachable state
-   must conform. Same SO-safe m/validator mechanism as output-oracle."
+   must conform. The same SO-safe validator as `output-oracle`, under the name
+   the stateful facet reads."
   [?model-schema]
-  (m/validator (reg/schema ?model-schema)))
+  (output-oracle ?model-schema))
 
 ;; =============================================================================
 ;; Contract — malli-native behavioral spec (mg/check over a :=> function schema)

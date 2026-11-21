@@ -33,6 +33,9 @@
 ;; schema FIRST — the m/=> registry is namespace-keyed (like instrumentation);
 ;; the a/defn in the fixture elaborates this schema into the kernel term. Same
 ;; subject shape as hive-schemas.verified-test (rung E): one schema, both rungs.
+;; Static tools (carto orphaned-schema) see no defn for vadd2: the
+;; ansatz.core/defn that defines it is EVAL'd in the fixture. A dialect gap in
+;; the detector, not an orphan.
 (m/=> vadd2 [:=> [:cat :int :int] :int])
 
 (defonce ^:private booted (delay (binding [a/*verbose* false] (a/load-init!))))
