@@ -179,6 +179,22 @@
       (is (= #{"one"} (:covered (per "hc.a"))))
       (is (= #{"three"} (:covered (per "hc.b")))))))
 
+(deftest a-repo-under-a-dot-directory-is-still-counted
+  (testing "only segments BELOW the repo root disqualify a file; a checkout
+            living under ~/.claude or ~/.cache must not census as empty"
+    (let [root (.toFile (java.nio.file.Files/createTempDirectory
+                         "census-dot" (make-array java.nio.file.attribute.FileAttribute 0)))
+          repo (io/file root ".hidden-parent" "repo")]
+      (write! repo "src/hd/a.clj"
+              (str "(ns hd.a (:require [malli.core :as m]))\n"
+                   "(defn one [x] x)\n(m/=> one [:=> [:cat :int] :int])\n"))
+      (write! repo "src/.skip/hd/b.clj" "(ns hd.b)\n(defn two [x] x)\n")
+      (let [row (census/repo-census repo {:name "hd"})]
+        (is (= 1 (:fns row)) "the dot-parent above the root does not hide hd.a")
+        (is (= 1 (:contracted row)))
+        (is (= ["hd.a"] (mapv :ns (:per row)))
+            "a dot segment below the root still skips its files")))))
+
 ;; =============================================================================
 ;; The ratchet, pointed at hive-schemas
 ;; =============================================================================
