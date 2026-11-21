@@ -16,11 +16,13 @@
 ;; =============================================================================
 
 (defn percent-rel
-  "Within half a tenth of the exact ratio, and 0.0 for an empty denominator."
+  "Within half a tenth of the exact ratio, and 0.0 for an empty denominator.
+   The bound carries a float epsilon: a half-tie such as 7/80 = 8.75 rounds to
+   8.8, and |8.8 - 8.75| is 0.0500000000000007 in doubles."
   [[a b] out]
   (if (zero? b)
     (= 0.0 out)
-    (<= (Math/abs (- out (/ (* 100.0 a) b))) 0.05)))
+    (<= (Math/abs (- out (/ (* 100.0 a) b))) (+ 0.05 1e-9))))
 
 (hst/deftrifecta-from-schema percent-facets census/percent
   {:in        [:cat [:int {:min 0 :max 500}] [:int {:min 0 :max 500}]]
