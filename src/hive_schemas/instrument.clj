@@ -47,21 +47,26 @@
     {:filters [(apply mi/-filter-ns ns-syms)]}))
 
 (defn instrument!
-  "Wrap every contracted var so calls are validated. Returns the number of vars
+  "Wrap every contracted var so calls are validated. Returns the vector of vars
    instrumented. Restrict with `:ns` (a symbol or seq of symbols).
+
+   malli answers one entry per REGISTERED function schema, nil for each var the
+   `:ns` filter rejects; once a dependency (hive-spi, hive-test) registers its
+   own contracts those nils would be counted as wrapped, so they are dropped.
 
    Mutates var roots — see the namespace docstring."
   ([] (instrument! {}))
   ([{:keys [ns] :as options}]
    (let [ns-syms (cond (nil? ns) nil (symbol? ns) [ns] :else (vec ns))]
-     (mi/instrument! (merge (dissoc options :ns) (ns-options ns-syms))))))
+     (filterv some? (mi/instrument! (merge (dissoc options :ns) (ns-options ns-syms)))))))
 
 (defn unstrument!
-  "Restore the original fns behind every contracted var."
+  "Restore the original fns behind every contracted var. Returns the vector of
+   vars restored (filtered-out registry entries dropped, as in `instrument!`)."
   ([] (unstrument! {}))
   ([{:keys [ns] :as options}]
    (let [ns-syms (cond (nil? ns) nil (symbol? ns) [ns] :else (vec ns))]
-     (mi/unstrument! (merge (dissoc options :ns) (ns-options ns-syms))))))
+     (filterv some? (mi/unstrument! (merge (dissoc options :ns) (ns-options ns-syms)))))))
 
 (defn check-all
   "malli's generative check of every contracted var: nil when all satisfy their
