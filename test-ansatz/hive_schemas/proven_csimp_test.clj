@@ -29,6 +29,9 @@
 ;; schemas FIRST -- m/=> is namespace-keyed; the a/defn in the fixture elaborates
 ;; each schema's kernel term (int -> Nat). One schema per subject, the same
 ;; source the wider lever projects conformance / generators from.
+;; Static tools (carto orphaned-schema) see no defn for these subjects: the
+;; ansatz.core/defn that defines them is EVAL'd in the fixture. A dialect gap
+;; in the detector, not an orphan.
 (m/=> addZero [:=> [:cat :int] :int])
 (m/=> ident   [:=> [:cat :int] :int])
 
