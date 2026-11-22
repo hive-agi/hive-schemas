@@ -86,9 +86,11 @@
 ;; Subject normalization
 ;; =============================================================================
 
-(def subject-symbol
-  "The bare qualified symbol behind a subject. See `hive-schemas.subject`."
-  subject/subject-symbol)
+(defn subject-symbol
+  "The bare qualified symbol behind a subject. See `hive-schemas.subject`.
+   Delegates through the var (a captured fn would not see a reload)."
+  [& args]
+  (apply subject/subject-symbol args))
 
 ;; =============================================================================
 ;; The Plan value object

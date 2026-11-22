@@ -18,24 +18,30 @@
 ;; SPDX-License-Identifier: MIT
 ;; Copyright (C) 2026 Pedro Gomes Branquinho (BuddhiLW) <pedrogbranquinho@gmail.com>
 
+;; Every fn re-export DELEGATES through the owning var at call time instead of
+;; `(def x owner/x)`, which captures the fn OBJECT: a reload of hive-spi (a fix
+;; applied in a live image) would never reach callers entering here. See epic
+;; 20260821211613-0c0e618f. `registry` is a malli registry VALUE, not a fn, so
+;; it stays a plain def.
+
 ;; --- registry ---
-(def register!       reg/register!)
-(def register-all!   reg/register-all!)
-(def deregister-all! reg/deregister-all!)
-(def registered      reg/registered)
+(defn register!       [& args] (apply reg/register! args))
+(defn register-all!   [& args] (apply reg/register-all! args))
+(defn deregister-all! [& args] (apply reg/deregister-all! args))
+(defn registered      [& args] (apply reg/registered args))
 (def registry        reg/registry)
-(def schema          reg/schema)
-(def validate        reg/validate)
-(def explain         reg/explain)
+(defn schema          [& args] (apply reg/schema args))
+(defn validate        [& args] (apply reg/validate args))
+(defn explain         [& args] (apply reg/explain args))
 
 ;; --- derivation ---
-(def compile-op   derive/compile-op)
-(def input-schema derive/input-schema)
+(defn compile-op   [& args] (apply derive/compile-op args))
+(defn input-schema [& args] (apply derive/input-schema args))
 
 ;; --- generation ---
-(def generator gen/generator)
-(def generate  gen/generate)
-(def sample    gen/sample)
+(defn generator [& args] (apply gen/generator args))
+(defn generate  [& args] (apply gen/generate args))
+(defn sample    [& args] (apply gen/sample args))
 
 ;; --- typing ---
-(def ->type typed/schema->type)
+(defn ->type [& args] (apply typed/schema->type args))
