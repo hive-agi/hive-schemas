@@ -17,10 +17,8 @@
    through hive-schemas.verified (the nil/violation-message oracle idiom)."
   (:require [clojure.test :refer [deftest testing is use-fixtures]]
             [malli.core :as m]
-            [ansatz.core :as a]
-            [ansatz.kernel.env :as env]
-            [ansatz.kernel.name :as kname]
-            [hive-schemas.verified :as v]))
+            [hive-schemas.verified :as v]
+            [hive-schemas.test-support :as ts]))
 
 ;; SPDX-License-Identifier: MIT
 ;; Copyright (C) 2026 Pedro Gomes Branquinho (BuddhiLW) <pedrogbranquinho@gmail.com>
@@ -33,21 +31,12 @@
 (declare vadd2)
 (m/=> vadd2 [:=> [:cat :int :int] :int])
 
-(defonce ^:private booted (delay (binding [a/*verbose* false] (a/load-init!))))
-
-(defn- ensure-subject!
-  "Boot the kernel stdlib once, then elaborate `vadd2` from its m/=> schema into
-   the live env (idempotent — skips when already present)."
-  []
-  @booted
-  (binding [a/*verbose* false]
-    (when-not (env/lookup (a/env) (kname/from-string "vadd2"))
-      (binding [*ns* (find-ns 'hive-schemas.verified-test)]
-        (eval '(ansatz.core/defn vadd2 [x y]
-                 (match x Nat Nat (zero y) (succ [k] (+ 1 (vadd2 k y)))))))))
-  nil)
-
-(use-fixtures :once (fn [t] (ensure-subject!) (t)))
+;; Boot the kernel once, then elaborate `vadd2` from its m/=> schema into the
+;; live env (idempotent: skipped when already present).
+(use-fixtures :once
+  (ts/subject-fixture 'hive-schemas.verified-test
+                      ["vadd2" '[(ansatz.core/defn vadd2 [x y]
+                                   (match x Nat Nat (zero y) (succ [k] (+ 1 (vadd2 k y)))))]]))
 
 ;; --- claim 1: faithfulness (macro-synthesized deftest) -----------------------
 ;; vadd2's compiled runtime agrees with the kernel across 15 generated inputs.

@@ -99,18 +99,51 @@
 (defn- ns-form [forms]
   (first (filter #(and (seq? %) (= 'ns (first %)) (symbol? (second %))) forms)))
 
-(defn- expand-spec [prefix spec]
+(defn- nested-specs?
+  "True when a libspec's tail opens with another spec (a prefix list such as
+   `[a [b :as bb] c]`) rather than with an option key."
+  [opts]
+  (boolean (and (seq opts) (or (sequential? (first opts)) (symbol? (first opts))))))
+
+(defn- spec-kind
+  "Which expansion stage a require spec takes: `:lib` for a bare symbol,
+   `:prefix-list` for a prefix with nested specs, `:libspec` for a symbol with
+   options, `:none` for anything else."
+  [spec]
   (cond
-    (symbol? spec) [[(str prefix spec) nil nil]]
-    (and (sequential? spec) (symbol? (first spec)))
-    (let [n (str prefix (first spec)) opts (rest spec)]
-      (if (and (seq opts) (or (sequential? (first opts)) (symbol? (first opts))))
-        (mapcat #(expand-spec (str n ".") %) opts)
-        (let [kv (partition 2 1 opts)]
-          [[n
-            (some (fn [[k v]] (when (contains? #{:as :as-alias} k) (str v))) kv)
-            (some (fn [[k v]] (when (and (= :refer k) (sequential? v)) (mapv str v))) kv)]])))
-    :else []))
+    (symbol? spec)                                      :lib
+    (not (and (sequential? spec) (symbol? (first spec)))) :none
+    (nested-specs? (rest spec))                         :prefix-list
+    :else                                               :libspec))
+
+(defn- libspec-alias
+  "The `:as` / `:as-alias` value among a libspec's option pairs, as a string."
+  [kv]
+  (some (fn [[k v]] (when (contains? #{:as :as-alias} k) (str v))) kv))
+
+(defn- libspec-refers
+  "The `:refer` vector among a libspec's option pairs, as strings; nil for
+   `:refer :all` or no refer."
+  [kv]
+  (some (fn [[k v]] (when (and (= :refer k) (sequential? v)) (mapv str v))) kv))
+
+(declare expand-spec)
+
+(def ^:private spec-expanders
+  "spec-kind -> (fn [prefix spec] [[ns-string alias refers] ...])."
+  {:lib         (fn [prefix spec] [[(str prefix spec) nil nil]])
+   :prefix-list (fn [prefix [lib & specs]]
+                  (mapcat #(expand-spec (str prefix lib ".") %) specs))
+   :libspec     (fn [prefix [lib & opts]]
+                  (let [kv (partition 2 1 opts)]
+                    [[(str prefix lib) (libspec-alias kv) (libspec-refers kv)]]))
+   :none        (fn [_ _] [])})
+
+(defn- expand-spec
+  "`[[ns-string alias-or-nil refers-or-nil] ...]` for one require spec under
+   `prefix`, dispatched through `spec-expanders` by `spec-kind`."
+  [prefix spec]
+  ((spec-expanders (spec-kind spec)) prefix spec))
 
 (defn ns-requires
   "`{:aliases {alias-string ns-string} :refers {name-string ns-string}
@@ -358,6 +391,10 @@
 (m/=> ns-form [:=> [:cat Forms] [:maybe [:sequential :any]]])
 (m/=> expand-spec [:=> [:cat :string [:any {:gen/elements ['a.b '[a.b :as ab] '[a [b :refer [x]]]]}]]
                    [:sequential [:tuple :string [:maybe :string] [:maybe [:vector :string]]]]])
+(m/=> nested-specs? [:=> [:cat [:maybe [:sequential :any]]] :boolean])
+(m/=> spec-kind [:=> [:cat :any] [:enum :lib :prefix-list :libspec :none]])
+(m/=> libspec-alias [:=> [:cat [:sequential [:sequential :any]]] [:maybe :string]])
+(m/=> libspec-refers [:=> [:cat [:sequential [:sequential :any]]] [:maybe [:vector :string]]])
 (m/=> head-from? [:=> [:cat :any [:map [:aliases {:optional true} [:map-of :string :string]]
                                    [:refers {:optional true} [:map-of :string :string]]]
                         [:set :string] :string]

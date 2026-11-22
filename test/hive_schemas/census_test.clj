@@ -91,6 +91,93 @@
    :num-tests 80})
 
 ;; =============================================================================
+;; Require-spec expansion: the dispatch table against the nested-cond original
+;; =============================================================================
+
+(defn- expand-spec-oracle
+  "The pre-table expand-spec, verbatim (cyclomatic complexity 10). The table
+   version must agree with it on every spec."
+  [prefix spec]
+  (cond
+    (symbol? spec) [[(str prefix spec) nil nil]]
+    (and (sequential? spec) (symbol? (first spec)))
+    (let [n (str prefix (first spec)) opts (rest spec)]
+      (if (and (seq opts) (or (sequential? (first opts)) (symbol? (first opts))))
+        (mapcat #(expand-spec-oracle (str n ".") %) opts)
+        (let [kv (partition 2 1 opts)]
+          [[n
+            (some (fn [[k v]] (when (contains? #{:as :as-alias} k) (str v))) kv)
+            (some (fn [[k v]] (when (and (= :refer k) (sequential? v)) (mapv str v))) kv)]])))
+    :else []))
+
+(def ^:private spec-corpus
+  "Require specs of every shape the census meets, plus junk it must ignore."
+  '[a.b [a.b :as ab] [a [b :refer [x]]] [a.b :as ab :refer [x y]] [a.b :as-alias q]
+    [a [b :as bb] c] [a b [c d [e :as ee]]] [a.b :refer :all] [a.b :refer [x] :as z]
+    [] [a.b] [:a] :foo "s" nil 1 (a.b :as ab) (a (b :as bb)) [a.b :reload] [a.b :as]
+    [[a]] {:a 1}])
+
+(defn expand-spec-rel
+  "The table expansion equals the original nested-cond expansion."
+  [[prefix spec] out]
+  (= (vec (expand-spec-oracle prefix spec)) (vec out)))
+
+(def ^:private expand-spec #'hive-schemas.census/expand-spec)
+
+(defn expand-spec-subject
+  "The private census stage behind a public test seam, so the synthesis macro
+   can name it."
+  [prefix spec]
+  (expand-spec prefix spec))
+
+(hst/deftrifecta-from-schema expand-spec-facets hive-schemas.census-test/expand-spec-subject
+  {:in        [:cat [:enum "" "p." "x.y."]
+               [:any {:gen/elements spec-corpus}]]
+   :out       [:sequential [:tuple :string [:maybe :string] [:maybe [:vector :string]]]]
+   :rel       hive-schemas.census-test/expand-spec-rel
+   :mutation  false
+   :num-tests 120})
+
+(deftest expand-spec-happy
+  (testing "a bare lib, an aliased libspec, and a prefix list with refers"
+    (is (= [["a.b" nil nil]] (expand-spec "" 'a.b)))
+    (is (= [["a.b" "ab" ["x" "y"]]] (expand-spec "" '[a.b :as ab :refer [x y]])))
+    (is (= [["a.b" "bb" nil] ["a.c" nil nil] ["a.d.e" "ee" nil]]
+           (expand-spec "" '[a [b :as bb] c [d [e :as ee]]]))))
+  (testing "agrees with the original on the whole corpus"
+    (doseq [s spec-corpus]
+      (is (= (vec (expand-spec-oracle "p." s)) (vec (expand-spec "p." s))) (pr-str s)))))
+
+(deftest expand-spec-edge
+  (testing "an :as-alias counts as the alias; :refer :all yields no refers"
+    (is (= [["a.b" "q" nil]] (expand-spec "" '[a.b :as-alias q])))
+    (is (= [["a.b" nil nil]] (expand-spec "" '[a.b :refer :all]))))
+  (testing "a libspec with no options, a dangling :as, and a list instead of a vector"
+    (is (= [["a.b" nil nil]] (expand-spec "" '[a.b])))
+    (is (= [["a.b" nil nil]] (expand-spec "" '[a.b :as])))
+    (is (= [["a.b" "ab" nil]] (expand-spec "" '(a.b :as ab)))))
+  (testing "the prefix is prepended to every expanded name"
+    (is (= [["p.a.b" nil nil]] (expand-spec "p." 'a.b)))))
+
+(deftest expand-spec-error
+  (testing "specs that name no lib expand to nothing rather than throwing"
+    (doseq [junk [nil 1 "s" :foo {:a 1} [] [:a] '[[a]]]]
+      (is (= [] (vec (expand-spec "" junk))) (pr-str junk)))))
+
+(deftest spec-kind-stages
+  (let [kind #'hive-schemas.census/spec-kind]
+    (testing "happy: each shape lands in its stage"
+      (is (= :lib (kind 'a.b)))
+      (is (= :libspec (kind '[a.b :as ab])))
+      (is (= :prefix-list (kind '[a [b :as bb]]))))
+    (testing "edge: a lone lib in a vector is a libspec with no options"
+      (is (= :libspec (kind '[a.b]))))
+    (testing "error: junk is :none"
+      (is (= :none (kind nil)))
+      (is (= :none (kind [:a])))
+      (is (= :none (kind "s"))))))
+
+;; =============================================================================
 ;; A fixture repo with a known answer
 ;; =============================================================================
 

@@ -34,6 +34,19 @@
 ;; SPDX-License-Identifier: MIT
 ;; Copyright (C) 2026 Pedro Gomes Branquinho (BuddhiLW) <pedrogbranquinho@gmail.com>
 
+(defn- kernel-failure
+  "nil when `(install! thm-name params prop tactics)` returns under a quiet
+   kernel; else `\"<what> rejected — <message>\"` carrying the kernel's
+   rejection. The nil/violation-message idiom proof-failure and csimp-failure
+   share: a rejection becomes a value, not a throw."
+  [what install! thm-name params prop tactics]
+  (try
+    (binding [a/*verbose* false]
+      (install! thm-name params prop tactics))
+    nil
+    (catch Exception e
+      (str what " rejected — " (.getMessage e)))))
+
 (defn proof-failure
   "nil when the ansatz kernel ACCEPTS a proof of `prop` (under the typed
    `params`) via `tactics` — i.e. theorem `thm-name` installs + kernel-verifies;
@@ -46,12 +59,7 @@
    the ansatz surface consumes, e.g. '[n :- Nat], '(= Nat (f n 0) n),
    '[(induction n) (rfl) (simp [f.eq_2 ih_n]) (omega)]. Kernel-only."
   [thm-name params prop tactics]
-  (try
-    (binding [a/*verbose* false]
-      (a/install-theorem! thm-name params prop tactics))
-    nil
-    (catch Exception e
-      (str "proof rejected — " (.getMessage e)))))
+  (kernel-failure "proof" a/install-theorem! thm-name params prop tactics))
 
 (defmacro deftrifecta-proven
   "Emit `name` — a clojure.test deftest asserting the ansatz kernel proves the
@@ -86,12 +94,7 @@
    quoted DATA forms the ansatz surface consumes, e.g. '[],
    '(= (forall [_ :- Nat] Nat) addZero ident), '[(rfl)]. Kernel-only."
   [eq-name params prop tactics]
-  (try
-    (binding [a/*verbose* false]
-      (a/define-csimp eq-name params prop tactics))
-    nil
-    (catch Exception e
-      (str "csimp rejected — " (.getMessage e)))))
+  (kernel-failure "csimp" a/define-csimp eq-name params prop tactics))
 
 (defmacro deftrifecta-csimp
   "Emit `name` — a clojure.test deftest asserting the ansatz kernel PROVES the
