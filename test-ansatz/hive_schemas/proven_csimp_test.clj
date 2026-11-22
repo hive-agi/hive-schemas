@@ -18,10 +18,8 @@
    never obtain a licence: kernel soundness is the safety of the swap."
   (:require [clojure.test :refer [deftest testing is use-fixtures]]
             [malli.core :as m]
-            [ansatz.core :as a]
-            [ansatz.kernel.env :as env]
-            [ansatz.kernel.name :as kname]
-            [hive-schemas.proven :as p]))
+            [hive-schemas.proven :as p]
+            [hive-schemas.test-support :as ts]))
 
 ;; SPDX-License-Identifier: MIT
 ;; Copyright (C) 2026 Pedro Gomes Branquinho (BuddhiLW) <pedrogbranquinho@gmail.com>
@@ -35,24 +33,12 @@
 (m/=> addZero [:=> [:cat :int] :int])
 (m/=> ident   [:=> [:cat :int] :int])
 
-(defonce ^:private booted (delay (binding [a/*verbose* false] (a/load-init!))))
-
-(defn- ensure-subjects!
-  "Boot the kernel stdlib (medium tier -- no Mathlib), then elaborate `addZero`
-   (n+0) and `ident` (n) from their m/=> schemas into the live env (idempotent).
-   load-init! re-inits the env per fixture, so this ns owns its subjects
-   regardless of test order."
-  []
-  @booted
-  (binding [a/*verbose* false
-            *ns* (find-ns 'hive-schemas.proven-csimp-test)]
-    (when-not (env/lookup (a/env) (kname/from-string "addZero"))
-      (eval '(ansatz.core/defn addZero [n] (+ n 0))))
-    (when-not (env/lookup (a/env) (kname/from-string "ident"))
-      (eval '(ansatz.core/defn ident [n] n))))
-  nil)
-
-(use-fixtures :once (fn [t] (ensure-subjects!) (t)))
+;; Boot the kernel (medium tier, no Mathlib), then elaborate `addZero` (n+0)
+;; and `ident` (n) from their m/=> schemas into the live env (idempotent).
+(use-fixtures :once
+  (ts/subject-fixture 'hive-schemas.proven-csimp-test
+                      ["addZero" '[(ansatz.core/defn addZero [n] (+ n 0))]]
+                      ["ident"   '[(ansatz.core/defn ident [n] n)]]))
 
 ;; --- the licence: a proof-carrying compiled refactor ------------------------
 ;; addZero (n+0) == ident (n) forall n, by iota-reduction of Nat.add's base case.

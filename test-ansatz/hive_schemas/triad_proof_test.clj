@@ -18,10 +18,8 @@
    yields no schema-derived mutants."
   (:require [clojure.test :refer [deftest testing is use-fixtures]]
             [malli.core :as m]
-            [ansatz.core :as a]
-            [ansatz.kernel.env :as env]
-            [ansatz.kernel.name :as kname]
-            [hive-schemas.test :as st]))
+            [hive-schemas.test :as st]
+            [hive-schemas.test-support :as ts]))
 
 ;; SPDX-License-Identifier: MIT
 ;; Copyright (C) 2026 Pedro Gomes Branquinho (BuddhiLW) <pedrogbranquinho@gmail.com>
@@ -32,19 +30,11 @@
 ;; before the kernel term (and its clojure fn) exist.
 (declare addZeroX)
 
-(defonce ^:private booted (delay (binding [a/*verbose* false] (a/load-init!))))
-
-(defn- ensure-subject!
-  "Boot the kernel stdlib, then elaborate addZeroX (n+0) from its m/=> schema into
-   the live env + the clojure var (idempotent)."
-  []
-  @booted
-  (binding [a/*verbose* false *ns* (find-ns 'hive-schemas.triad-proof-test)]
-    (when-not (env/lookup (a/env) (kname/from-string "addZeroX"))
-      (eval '(ansatz.core/defn addZeroX [n] (+ n 0)))))
-  nil)
-
-(use-fixtures :once (fn [t] (ensure-subject!) (t)))
+;; Boot the kernel, then elaborate addZeroX (n+0) from its m/=> schema into the
+;; live env + the clojure var (idempotent).
+(use-fixtures :once
+  (ts/subject-fixture 'hive-schemas.triad-proof-test
+                      ["addZeroX" '[(ansatz.core/defn addZeroX [n] (+ n 0))]]))
 
 ;; ONE entry -> conformance + relation (malli, sampled) + proof (ansatz, forall).
 (st/deftriad-from-schema triad-addzero addZeroX

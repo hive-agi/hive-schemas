@@ -151,15 +151,21 @@
   (let [base (:plan/name p)]
     (mapv (fn [facet] (symbol (str base (facet-suffix facet)))) (:plan/facets p))))
 
+(defn- against-plan
+  "Apply the registry check `check` (reg/validate or reg/explain) to `p` under
+   :hive.schemas/plan. The one place the Plan schema key is named for checking."
+  [check p]
+  (check :hive.schemas/plan p))
+
 (defn validate
   "True iff `p` conforms to :hive.schemas/plan."
   [p]
-  (reg/validate :hive.schemas/plan p))
+  (against-plan reg/validate p))
 
 (defn explain
   "malli explanation for `p` against :hive.schemas/plan, or nil."
   [p]
-  (reg/explain :hive.schemas/plan p))
+  (against-plan reg/explain p))
 
 ;; =============================================================================
 ;; Contracts
