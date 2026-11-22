@@ -2,7 +2,20 @@
   "Smoke test: the unified facade re-exports the hive-spi.schema levers and a
    registered schema round-trips through register! -> compile-op -> generate."
   (:require [clojure.test :refer [deftest is]]
-            [hive-schemas.schema :as s]))
+            [hive-schemas.schema :as s]
+            [hive-schemas.test :as hst]))
+
+(defn validate-rel
+  "The facade answers exactly what malli answers for an :int schema."
+  [[_ x] out]
+  (= out (int? x)))
+
+(hst/deftrifecta-from-schema validate-facets s/validate
+  {:in       [:cat [:= :int] [:or :int :string :nil]]
+   :out      :boolean
+   :rel      hive-schemas.schema-test/validate-rel
+   :contract true
+   :num-tests 40})
 
 (deftest facade-roundtrip-test
   (s/register! ::point [:map [:x :int] [:y :int]])

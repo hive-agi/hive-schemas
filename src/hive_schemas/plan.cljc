@@ -167,6 +167,7 @@
 ;; Contracts
 ;; =============================================================================
 
+(m/=> subject-symbol [:=> [:cat vocab/SubjectRef] :symbol])
 (m/=> opts->facets [:=> [:cat [:maybe vocab/Opts]] [:vector :keyword]])
 
 (m/=> plan [:=> [:cat [:or :symbol :keyword :string] vocab/SubjectRef [:maybe vocab/Opts]] [:map]])

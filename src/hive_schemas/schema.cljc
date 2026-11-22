@@ -13,7 +13,8 @@
   (:require [hive-spi.schema.registry :as reg]
             [hive-spi.schema.derive :as derive]
             [hive-spi.schema.gen :as gen]
-            [hive-spi.schema.typed :as typed]))
+            [hive-spi.schema.typed :as typed]
+            [malli.core :as m]))
 
 ;; SPDX-License-Identifier: MIT
 ;; Copyright (C) 2026 Pedro Gomes Branquinho (BuddhiLW) <pedrogbranquinho@gmail.com>
@@ -45,3 +46,24 @@
 
 ;; --- typing ---
 (defn ->type [& args] (apply typed/schema->type args))
+
+;; --- contracts: mirror hive-spi's own m/=> on each owner fn ---
+(m/=> register!       [:=> [:cat :qualified-keyword :any] :qualified-keyword])
+(m/=> register-all!   [:=> [:cat [:map-of :qualified-keyword :any]] [:vector :qualified-keyword]])
+(m/=> deregister-all! [:=> [:cat [:or [:sequential :keyword] [:set :keyword]]] [:vector :keyword]])
+(m/=> registered      [:=> [:cat] [:map-of :keyword :any]])
+(m/=> schema          [:=> [:cat reg/SchemaRef] reg/CompiledSchema])
+(m/=> validate        [:=> [:cat reg/SchemaRef :any] :boolean])
+(m/=> explain         [:=> [:cat reg/SchemaRef :any] [:maybe :map]])
+(m/=> compile-op      [:=> [:cat reg/SchemaRef] derive/OpBundle])
+(m/=> input-schema    [:=> [:cat reg/SchemaRef] :map])
+(m/=> generator [:function
+                 [:=> [:cat reg/SchemaRef] gen/Generator]
+                 [:=> [:cat reg/SchemaRef gen/GenOpts] gen/Generator]])
+(m/=> generate [:function
+                [:=> [:cat reg/SchemaRef] :any]
+                [:=> [:cat reg/SchemaRef gen/GenOpts] :any]])
+(m/=> sample [:function
+              [:=> [:cat reg/SchemaRef] [:sequential :any]]
+              [:=> [:cat reg/SchemaRef gen/GenOpts] [:sequential :any]]])
+(m/=> ->type [:=> [:cat reg/SchemaRef] typed/TypeSyntax])
