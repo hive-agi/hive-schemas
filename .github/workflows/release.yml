@@ -34,9 +34,12 @@ jobs:
         with:
           fetch-depth: 0
 
+      # bb too: the suite shells out to babashka (staging-gate installs it),
+      # so without it the release run errors where the gate passed.
       - uses: DeLaGuardo/setup-clojure@13.0
         with:
           cli: latest
+          bb: latest
 
       # A published pom is immutable, so the suite runs BEFORE anything
       # is minted. Without this step a red push straight to main still
