@@ -50,35 +50,47 @@
    :proof           "-proof"
    :model-check     "-model-check"})
 
+(def ^:private facet-selector
+  "Facet id -> the option whose TRUTHINESS selects it; `::always` for a facet
+   every plan carries. One row per `facet-order` member."
+  {:conformance     ::always
+   :relation        :rel
+   :idempotent      :idempotent?
+   :contract        :contract
+   :mutants-present :mutation
+   :mutations       :mutation
+   :golden          :golden-path
+   :input-strength  :strict-in
+   :proof           :prove
+   :model-check     :model-check})
+
+(def ^:private selector-defaults
+  "Option values assumed when the key is ABSENT (an explicit nil/false wins)."
+  {:mutation true})
+
 (defn opts->facets
   "Ordered facet ids the options map `opts` selects.
 
    Every selector reads the opt's TRUTHINESS, never its presence: `{:contract
    false}` selects no contract facet. `:mutation` defaults to true and selects
-   the mutation pair."
-  [{:keys [rel idempotent? contract mutation golden-path strict-in prove
-           model-check]
-    :or   {mutation true}}]
-  (into []
-        (remove nil?)
-        [:conformance
-         (when rel :relation)
-         (when idempotent? :idempotent)
-         (when contract :contract)
-         (when mutation :mutants-present)
-         (when mutation :mutations)
-         (when golden-path :golden)
-         (when strict-in :input-strength)
-         (when prove :proof)
-         (when model-check :model-check)]))
+   the mutation pair. The selection is the `facet-selector` table, walked in
+   `facet-order`."
+  [opts]
+  (let [o (merge selector-defaults opts)]
+    (filterv (fn [facet]
+               (let [k (facet-selector facet)]
+                 (or (= ::always k) (get o k))))
+             facet-order)))
 
 ;; =============================================================================
 ;; Subject normalization
 ;; =============================================================================
 
-(def subject-symbol
-  "The bare qualified symbol behind a subject. See `hive-schemas.subject`."
-  subject/subject-symbol)
+(defn subject-symbol
+  "The bare qualified symbol behind a subject. See `hive-schemas.subject`.
+   Delegates through the var (a captured fn would not see a reload)."
+  [& args]
+  (apply subject/subject-symbol args))
 
 ;; =============================================================================
 ;; The Plan value object
@@ -141,20 +153,27 @@
   (let [base (:plan/name p)]
     (mapv (fn [facet] (symbol (str base (facet-suffix facet)))) (:plan/facets p))))
 
+(defn- against-plan
+  "Apply the registry check `check` (reg/validate or reg/explain) to `p` under
+   :hive.schemas/plan. The one place the Plan schema key is named for checking."
+  [check p]
+  (check :hive.schemas/plan p))
+
 (defn validate
   "True iff `p` conforms to :hive.schemas/plan."
   [p]
-  (reg/validate :hive.schemas/plan p))
+  (against-plan reg/validate p))
 
 (defn explain
   "malli explanation for `p` against :hive.schemas/plan, or nil."
   [p]
-  (reg/explain :hive.schemas/plan p))
+  (against-plan reg/explain p))
 
 ;; =============================================================================
 ;; Contracts
 ;; =============================================================================
 
+(m/=> subject-symbol [:=> [:cat vocab/SubjectRef] :symbol])
 (m/=> opts->facets [:=> [:cat [:maybe vocab/Opts]] [:vector :keyword]])
 
 (m/=> plan [:=> [:cat [:or :symbol :keyword :string] vocab/SubjectRef [:maybe vocab/Opts]] [:map]])

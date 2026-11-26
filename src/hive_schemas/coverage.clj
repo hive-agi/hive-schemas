@@ -54,6 +54,55 @@
         (sort-by #(.getPath ^java.io.File %))
         vec)))
 
+(defn- visibility
+  ":private or :public for a defining form. `defn-`, `^:private`, `^{:private true}`
+   and a `{:private true}` attr map (after an optional docstring) all make it private."
+  [[head fn-name & more]]
+  (let [attr (first (drop-while string? (take 2 more)))]
+    (if (or (= :private (get defining-forms head))
+            (:private (meta fn-name))
+            (and (map? attr) (:private attr)))
+      :private
+      :public)))
+
+(defn- ns-decl
+  "The namespace symbol `form` declares when it is an `(ns sym ...)` form, else nil."
+  [form]
+  (when (and (seq? form) (= 'ns (first form)) (symbol? (second form)))
+    (second form)))
+
+(defn- defined-fn
+  "The qualified symbol `form` defines under `ns-sym` when it is a defining form
+   whose visibility is in `want`, else nil. nil before any `ns` form is seen."
+  [ns-sym want form]
+  (when (and ns-sym (seq? form)
+             (contains? defining-forms (first form))
+             (symbol? (second form))
+             (contains? want (visibility form)))
+    (symbol (str ns-sym) (str (second form)))))
+
+(defn- scan-form
+  "Fold one top-level `form` into `{:ns sym :defns #{qualified-sym}}`: an `ns`
+   form moves the current namespace, a wanted defining form adds its symbol."
+  [want acc form]
+  (if-let [ns-sym (ns-decl form)]
+    (assoc acc :ns ns-sym)
+    (if-let [q (defined-fn (:ns acc) want form)]
+      (update acc :defns conj q)
+      acc)))
+
+(defn- read-source-forms
+  "Every top-level form of the source `text`, read under the :clj feature with
+   `*read-eval*` off and every alias resolving to one placeholder (see
+   `file-defns`). Throws when the text does not parse."
+  [text]
+  (let [rdr (rt/string-push-back-reader text)]
+    (binding [tr/*read-eval* false
+              tr/*alias-map* (fn [_] 'hive-schemas.coverage.unresolved-alias)]
+      (loop [forms []]
+        (let [form (tr/read {:read-cond :allow :features #{:clj} :eof ::eof} rdr)]
+          (if (= ::eof form) forms (recur (conj forms form))))))))
+
 (defn file-defns
   "`{:file path :ns sym :defns #{qualified-sym}}` for `file`, or
    `{:file path :error message}` when it cannot be read.
@@ -74,32 +123,18 @@
    placeholder: this fn only ever inspects `(first form)` and `(second form)`
    to recognise an `ns` or a `defn`, so what an auto-resolved keyword resolves
    TO is irrelevant, and pretending every alias is known costs nothing and
-   loses nothing."
+   loses nothing.
+
+   Stages: `read-source-forms` (the boundary: text -> forms) then a pure
+   `scan-form` fold over them."
   ([file] (file-defns file {:include-private? false}))
   ([file {:keys [include-private?]}]
    (let [path (.getPath ^java.io.File file)
          want (if include-private? #{:public :private} #{:public})]
      (try
-       (let [rdr (rt/string-push-back-reader (slurp file))]
-         (binding [tr/*read-eval* false
-                   tr/*alias-map* (fn [_] 'hive-schemas.coverage.unresolved-alias)]
-           (loop [ns-sym nil defns #{}]
-             (let [form (tr/read {:read-cond :allow :features #{:clj} :eof ::eof} rdr)]
-               (cond
-                 (= ::eof form)
-                 {:file path :ns ns-sym :defns defns}
-
-                 (and (seq? form) (= 'ns (first form)) (symbol? (second form)))
-                 (recur (second form) defns)
-
-                 (and (seq? form) ns-sym
-                      (contains? defining-forms (first form))
-                      (symbol? (second form))
-                      (contains? want (get defining-forms (first form))))
-                 (recur ns-sym (conj defns (symbol (str ns-sym) (str (second form)))))
-
-                 :else
-                 (recur ns-sym defns))))))
+       (merge {:file path}
+              (reduce (partial scan-form want) {:ns nil :defns #{}}
+                      (read-source-forms (slurp file))))
        (catch Exception e
          {:file path :error (str (.getSimpleName (class e)) ": " (.getMessage e))})))))
 
@@ -251,3 +286,40 @@
 (m/=> coverage [:=> [:cat [:maybe vocab/Opts]] [:map]])
 
 (m/=> coverage-failures [:=> [:cat [:maybe [:map]]] vocab/Violations])
+
+;; --- private stages ----------------------------------------------------------
+
+(def ^:private SourceForm
+  "A top-level form as tools.reader answers it; generated from a few shapes the
+   scanner distinguishes."
+  [:any {:gen/elements ['(ns a.b) '(defn f [x] x) '(defn- g [] 1)
+                        '(defn ^:private h [] 1) '(def x 1) :kw 42]}])
+
+(def ^:private Visibility [:enum :public :private])
+
+(m/=> extension [:=> [:cat [:any {:gen/elements [(io/file "a.clj") (io/file "noext")]}]]
+                 [:maybe :string]])
+
+(m/=> visibility [:=> [:cat [:sequential {:gen/elements ['(defn f [x] x) '(defn- g [] 1)
+                                                         '(defn h {:private true} [] 1)]}
+                             :any]]
+                  Visibility])
+
+(m/=> ns-decl [:=> [:cat SourceForm] [:maybe :symbol]])
+
+(m/=> defined-fn [:=> [:cat [:maybe :symbol] [:set Visibility] SourceForm]
+                  [:maybe :qualified-symbol]])
+
+(m/=> scan-form [:=> [:cat [:set Visibility]
+                      [:map [:ns [:maybe :symbol]] [:defns [:set :qualified-symbol]]]
+                      SourceForm]
+                 [:map [:ns [:maybe :symbol]] [:defns [:set :qualified-symbol]]]])
+
+(m/=> read-source-forms [:=> [:cat [:string {:gen/elements ["(ns a.b)\n(defn f [x] x)" ""]}]]
+                         [:vector :any]])
+
+(m/=> load-namespaces [:=> [:cat [:or {:gen/elements [['clojure.set] #{'clojure.set}]}
+                                   [:set :symbol] [:sequential :symbol]]]
+                       [:vector [:map [:ns :symbol] [:error :string]]]])
+
+(m/=> blank-reasons [:=> [:cat [:maybe [:map-of :symbol :any]]] [:set :symbol]])

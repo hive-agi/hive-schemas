@@ -274,6 +274,24 @@
                        'probe.one/hidden)))
       (is (empty? (:unreadable r))))))
 
+(deftest coverage-reads-privacy-from-metadata
+  (let [dir (temp-dir)]
+    (write-source! dir "probe/meta.clj"
+                   (str "(ns probe.meta)\n"
+                        "(defn open [x] x)\n"
+                        "(defn ^:private kw-meta [x] x)\n"
+                        "(defn ^{:private true\n       :doc \"multi-line\"} map-meta [x] x)\n"
+                        "(defn attr-map {:private true} [x] x)\n"
+                        "(defn doc-attr \"doc\" {:private true} [x] x)\n"
+                        "(defn ^{:private false} not-private [x] x)\n"))
+    (let [f (io/file dir "probe/meta.clj")]
+      (testing "every metadata spelling of private stays out of the public universe"
+        (is (= #{'probe.meta/open 'probe.meta/not-private} (:defns (cov/file-defns f)))))
+      (testing "and comes back when private defns are asked for"
+        (is (= #{'probe.meta/open 'probe.meta/not-private 'probe.meta/kw-meta
+                 'probe.meta/map-meta 'probe.meta/attr-map 'probe.meta/doc-attr}
+               (:defns (cov/file-defns f {:include-private? true}))))))))
+
 (deftest coverage-gates-are-independently-falsifiable
   (let [dir (temp-dir)]
     (write-source! dir "probe/three.clj" "(ns probe.three)\n(defn delta [x] x)\n")

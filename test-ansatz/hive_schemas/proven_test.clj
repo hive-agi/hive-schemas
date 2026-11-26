@@ -22,10 +22,8 @@
    schema that yields the conformance / :contract / differential facets."
   (:require [clojure.test :refer [deftest testing is use-fixtures]]
             [malli.core :as m]
-            [ansatz.core :as a]
-            [ansatz.kernel.env :as env]
-            [ansatz.kernel.name :as kname]
-            [hive-schemas.proven :as p]))
+            [hive-schemas.proven :as p]
+            [hive-schemas.test-support :as ts]))
 
 ;; SPDX-License-Identifier: MIT
 ;; Copyright (C) 2026 Pedro Gomes Branquinho (BuddhiLW) <pedrogbranquinho@gmail.com>
@@ -33,25 +31,18 @@
 ;; schema FIRST — the m/=> registry is namespace-keyed (like instrumentation);
 ;; the a/defn in the fixture elaborates this schema into the kernel term. Same
 ;; subject shape as hive-schemas.verified-test (rung E): one schema, both rungs.
+;; Static tools (carto orphaned-schema) see no defn for vadd2: the
+;; ansatz.core/defn that defines it is EVAL'd in the fixture. A dialect gap in
+;; the detector, not an orphan.
 (m/=> vadd2 [:=> [:cat :int :int] :int])
 
-(defonce ^:private booted (delay (binding [a/*verbose* false] (a/load-init!))))
-
-(defn- ensure-subject!
-  "Boot the kernel stdlib, then elaborate `vadd2` from its m/=> schema into the
-   live env (idempotent). load-init! re-inits the env per fixture, so this ns
-   owns its subject regardless of test order (kaocha groups :once fixtures per
-   ns)."
-  []
-  @booted
-  (binding [a/*verbose* false]
-    (when-not (env/lookup (a/env) (kname/from-string "vadd2"))
-      (binding [*ns* (find-ns 'hive-schemas.proven-test)]
-        (eval '(ansatz.core/defn vadd2 [x y]
-                 (match x Nat Nat (zero y) (succ [k] (+ 1 (vadd2 k y)))))))))
-  nil)
-
-(use-fixtures :once (fn [t] (ensure-subject!) (t)))
+;; Boot the kernel, then elaborate `vadd2` from its m/=> schema into the live
+;; env (idempotent). load-init! re-inits the env per fixture, so this ns owns
+;; its subject regardless of test order (kaocha groups :once fixtures per ns).
+(use-fixtures :once
+  (ts/subject-fixture 'hive-schemas.proven-test
+                      ["vadd2" '[(ansatz.core/defn vadd2 [x y]
+                                   (match x Nat Nat (zero y) (succ [k] (+ 1 (vadd2 k y)))))]]))
 
 ;; --- claim 1: a definitional ∀ (left identity) ------------------------------
 (p/deftrifecta-proven vadd2-left-identity

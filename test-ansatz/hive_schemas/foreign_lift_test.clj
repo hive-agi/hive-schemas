@@ -26,7 +26,8 @@
             [ansatz.core :as a]
             [ansatz.kernel.env :as env]
             [ansatz.kernel.name :as kname]
-            [hive-schemas.proven :as p]))
+            [hive-schemas.proven :as p]
+            [hive-schemas.test-support :as ts]))
 
 ;; SPDX-License-Identifier: MIT
 ;; Copyright (C) 2026 Pedro Gomes Branquinho (BuddhiLW) <pedrogbranquinho@gmail.com>
@@ -36,21 +37,10 @@
   '[(malli.core/=> add [:=> [:cat :int :int] :int])
     (ansatz.core/defn add [a b] (+ a b))])
 
-(defonce ^:private booted (delay (binding [a/*verbose* false] (a/load-init!))))
-
-(defn- ensure-subject!
-  "Boot the kernel stdlib, then eval the lifted forms in THIS namespace, in
-   order, so the m/=> registration is namespace-keyed where a/defn looks for
-   it. Idempotent per kernel env."
-  []
-  @booted
-  (binding [a/*verbose* false]
-    (when-not (env/lookup (a/env) (kname/from-string "add"))
-      (binding [*ns* (find-ns 'hive-schemas.foreign-lift-test)]
-        (doseq [f lifted-forms] (eval f)))))
-  nil)
-
-(use-fixtures :once (fn [t] (ensure-subject!) (t)))
+;; Boot the kernel, then eval the lifted forms in THIS namespace, in order, so
+;; the m/=> registration is namespace-keyed where a/defn looks for it.
+(use-fixtures :once
+  (ts/subject-fixture 'hive-schemas.foreign-lift-test ["add" lifted-forms]))
 
 (deftest the-lifted-forms-elaborate
   (testing "the a/defn is a kernel constant after eval, and the compiled fn runs"

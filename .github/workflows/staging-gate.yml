@@ -51,6 +51,14 @@ jobs:
           sudo /tmp/clj-install.sh
           clojure --version
 
+      - name: Setup babashka
+        run: |
+          set -euo pipefail
+          curl -fsSL -o /tmp/bb-install https://raw.githubusercontent.com/babashka/babashka/master/install
+          chmod +x /tmp/bb-install
+          sudo /tmp/bb-install --version 1.12.196
+          bb --version
+
       - name: Private-registry credentials
         if: env.MAVEN_TOKEN != ''
         run: |

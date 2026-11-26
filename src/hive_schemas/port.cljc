@@ -139,3 +139,6 @@
       [:function
        [:=> [:cat :any [:map] :any] [:map-of :symbol vocab/Violations]]
        [:=> [:cat :any [:map] :any [:maybe vocab/Opts]] [:map-of :symbol vocab/Violations]]])
+
+(m/=> thrown [:=> [:cat [:fn {:gen/elements [(constantly 1) #(throw (ex-info "boom" {}))]} ifn?]]
+              :any])
